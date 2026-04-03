@@ -66,5 +66,18 @@ export function createDashboardRouter(db: PrismaClient): Router {
     }),
   );
 
+  r.get(
+    "/dashboard/upcoming-statements",
+    asyncHandler(async (req, res) => {
+      const schema = z.object({
+        limit: z.coerce.number().int().min(1).max(24).optional(),
+      });
+      const r0 = schema.safeParse(req.query);
+      if (!r0.success) throw new ValidationError("query limit opcional, inteiro entre 1 e 24");
+      const limit = r0.data.limit ?? 6;
+      res.json(await q.upcomingStatements(limit));
+    }),
+  );
+
   return r;
 }
