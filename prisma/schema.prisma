@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum CategoryType {
+  expense
+  income
+}
+
+model Category {
+  id                  String               @id @default(uuid())
+  name                String
+  type                CategoryType         @default(expense)
+  color               String?
+  icon                String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  fixedExpenses       FixedExpense[]
+  monthlyEntries      MonthlyEntry[]
+  creditCardPurchases CreditCardPurchase[]
+}
+
+model FixedExpense {
+  id                 String         @id @default(uuid())
+  name               String
+  description        String?
+  /// Valor fixo mensal, ou valor de referência / última média quando isVariableAmount
+  amountCents        Int
+  /// Contas como energia e água: valor muda todo mês; na geração usa-se o lançamento do mês anterior, se existir
+  isVariableAmount   Boolean        @default(false)
+  categoryId         String
+  dueDay             Int
+  isActive           Boolean        @default(true)
+  isRecurringMonthly Boolean        @default(true)
+  category           Category       @relation(fields: [categoryId], references: [id])
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  monthlyEntries     MonthlyEntry[]
+}
+
+enum PaymentMethod {
+  cash
+  debit
+  pix
+  credit_card
+}
+
+enum MonthlyEntrySourceType {
+  variable
+  fixed_expense
+}
+
+model MonthlyEntry {
+  id              String                   @id @default(uuid())
+  description     String
+  amountCents     Int
+  date            DateTime
+  competencyMonth String
+  categoryId      String
+  paymentMethod   PaymentMethod
+  sourceType      MonthlyEntrySourceType
+  fixedExpenseId  String?
+  category        Category                 @relation(fields: [categoryId], references: [id])
+  fixedExpense    FixedExpense?            @relation(fields: [fixedExpenseId], references: [id])
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([competencyMonth])
+}
+
+model CreditCard {
+  id         String               @id @default(uuid())
+  name       String
+  brand      String?
+  limitCents Int?
+  closingDay Int
+  dueDay     Int
+  isActive   Boolean              @default(true)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  statements Statement[]
+  purchases  CreditCardPurchase[]
+}
+
+enum StatementStatus {
+  open
+  closed
+  paid
+  overdue
+}
+
+model Statement {
+  id             String                @id @default(uuid())
+  creditCardId   String
+  referenceMonth String
+  periodStart    DateTime
+  periodEnd      DateTime
+  closingDate    DateTime
+  dueDate        DateTime
+  status         StatementStatus       @default(open)
+  creditCard     CreditCard            @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  installments   PurchaseInstallment[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([creditCardId, referenceMonth])
+  @@index([creditCardId])
+}
+
+model CreditCardPurchase {
+  id                     String                @id @default(uuid())
+  creditCardId           String
+  categoryId             String
+  description            String
+  purchaseDate           DateTime
+  totalAmountCents       Int
+  isInstallmentPurchase  Boolean               @default(false)
+  totalInstallments      Int                   @default(1)
+  currentInstallment     Int                   @default(1)
+  installmentAmountCents Int?
+  creditCard             CreditCard            @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  category               Category              @relation(fields: [categoryId], references: [id])
+  installments           PurchaseInstallment[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  @@index([creditCardId])
+}
+
+enum InstallmentStatus {
+  pending
+  paid
+}
+
+model PurchaseInstallment {
+  id                String             @id @default(uuid())
+  purchaseId        String
+  statementId       String
+  installmentNumber Int
+  totalInstallments Int
+  amountCents       Int
+  competencyMonth   String
+  status            InstallmentStatus  @default(pending)
+  purchase          CreditCardPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  statement         Statement          @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([statementId])
+  @@index([purchaseId])
+  @@index([competencyMonth])
+}
