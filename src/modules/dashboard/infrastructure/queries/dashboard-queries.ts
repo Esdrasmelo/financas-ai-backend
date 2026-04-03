@@ -1,7 +1,33 @@
 import type { PrismaClient } from "@prisma/client";
-import { addMonthsToCompetencyMonth } from "../../../financial/domain/value-objects/competency-month.js";
+import {
+  addMonthsToCompetencyMonth,
+  competencyMonthFromDate,
+} from "../../../financial/domain/value-objects/competency-month.js";
+import { ValidationError } from "../../../../shared/domain/errors/domain-error.js";
 
 export type CompetencyView = "occurrence" | "payment";
+
+function endOfCompetencyMonthUtc(ym: string): Date {
+  const [y, mo] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, mo, 0, 23, 59, 59, 999));
+}
+
+export function expandCompetencyMonthRange(from: string, to: string): string[] {
+  if (from > to) {
+    throw new ValidationError("fromCompetencyMonth deve ser menor ou igual a toCompetencyMonth");
+  }
+  const out: string[] = [];
+  let cur = from;
+  for (;;) {
+    out.push(cur);
+    if (cur === to) break;
+    if (out.length >= 36) {
+      throw new ValidationError("Intervalo máximo de 36 meses");
+    }
+    cur = addMonthsToCompetencyMonth(cur, 1);
+  }
+  return out;
+}
 
 export class DashboardQueries {
   constructor(private readonly db: PrismaClient) {}
@@ -91,6 +117,92 @@ export class DashboardQueries {
       categoryId,
       categoryName: byId.get(categoryId)?.name ?? categoryId,
       amountCents,
+    }));
+  }
+
+  async creditCardMonthlySeries(
+    creditCardId: string,
+    fromCompetencyMonth: string,
+    toCompetencyMonth: string,
+    view: CompetencyView,
+  ) {
+    const months = expandCompetencyMonthRange(fromCompetencyMonth, toCompetencyMonth);
+    if (view === "payment") {
+      const rows = await this.db.purchaseInstallment.groupBy({
+        by: ["competencyMonth"],
+        where: {
+          competencyMonth: { gte: fromCompetencyMonth, lte: toCompetencyMonth },
+          statement: { creditCardId },
+        },
+        _sum: { amountCents: true },
+      });
+      const map = new Map(rows.map((r) => [r.competencyMonth, r._sum.amountCents ?? 0]));
+      return months.map((m) => ({ competencyMonth: m, totalCents: map.get(m) ?? 0 }));
+    }
+    const purchases = await this.db.creditCardPurchase.findMany({
+      where: {
+        creditCardId,
+        purchaseDate: {
+          gte: new Date(`${fromCompetencyMonth}-01T00:00:00.000Z`),
+          lte: endOfCompetencyMonthUtc(toCompetencyMonth),
+        },
+      },
+      select: { purchaseDate: true, totalAmountCents: true },
+    });
+    const map = new Map<string, number>();
+    for (const m of months) map.set(m, 0);
+    for (const p of purchases) {
+      const ym = competencyMonthFromDate(p.purchaseDate);
+      if (ym >= fromCompetencyMonth && ym <= toCompetencyMonth) {
+        map.set(ym, (map.get(ym) ?? 0) + p.totalAmountCents);
+      }
+    }
+    return months.map((m) => ({ competencyMonth: m, totalCents: map.get(m) ?? 0 }));
+  }
+
+  async creditCardCategoryBreakdownInRange(
+    creditCardId: string,
+    fromCompetencyMonth: string,
+    toCompetencyMonth: string,
+    view: CompetencyView,
+  ) {
+    const catTotals = new Map<string, number>();
+    if (view === "payment") {
+      const rows = await this.db.purchaseInstallment.findMany({
+        where: {
+          competencyMonth: { gte: fromCompetencyMonth, lte: toCompetencyMonth },
+          statement: { creditCardId },
+        },
+        include: { purchase: true },
+      });
+      for (const r of rows) {
+        const k = r.purchase.categoryId;
+        catTotals.set(k, (catTotals.get(k) ?? 0) + r.amountCents);
+      }
+    } else {
+      const purchases = await this.db.creditCardPurchase.findMany({
+        where: {
+          creditCardId,
+          purchaseDate: {
+            gte: new Date(`${fromCompetencyMonth}-01T00:00:00.000Z`),
+            lte: endOfCompetencyMonthUtc(toCompetencyMonth),
+          },
+        },
+      });
+      for (const p of purchases) {
+        catTotals.set(p.categoryId, (catTotals.get(p.categoryId) ?? 0) + p.totalAmountCents);
+      }
+    }
+    const categories = await this.db.category.findMany({
+      where: { id: { in: [...catTotals.keys()] } },
+    });
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const total = [...catTotals.values()].reduce((a, b) => a + b, 0);
+    return [...catTotals.entries()].map(([categoryId, amountCents]) => ({
+      categoryId,
+      categoryName: byId.get(categoryId)?.name ?? categoryId,
+      amountCents,
+      percentOfTotal: total > 0 ? Math.round((amountCents / total) * 10000) / 100 : 0,
     }));
   }
 

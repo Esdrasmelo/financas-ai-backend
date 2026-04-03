@@ -16,9 +16,11 @@ import {
   resolvePurchaseTotalAndInstallmentMode,
   splitInstallmentCents,
 } from "../../domain/services/statement-cycle.js";
+import { DashboardQueries } from "../../../dashboard/infrastructure/queries/dashboard-queries.js";
 import {
   makeCreateCreditCard,
   makeEstimateStatementCycle,
+  makeGetCreditCard,
   makeGetCreditCardPurchase,
   makeGetStatementDetails,
   makeListAllStatements,
@@ -121,6 +123,8 @@ export function createCreditCardRouter(db: PrismaClient): Router {
   const listPurchases = makeListCreditCardPurchases(purRepo);
   const getPurchase = makeGetCreditCardPurchase(purRepo);
   const listFutureInst = makeListFutureInstallments(instRepo);
+  const getCard = makeGetCreditCard(cardRepo);
+  const dashboardQueries = new DashboardQueries(db);
 
   r.get(
     "/credit-cards",
@@ -172,6 +176,42 @@ export function createCreditCardRouter(db: PrismaClient): Router {
     "/credit-cards/:id/statements",
     asyncHandler(async (req, res) => {
       res.json(await listStmtsByCard(req.params.id));
+    }),
+  );
+
+  r.get(
+    "/credit-cards/:id/analytics",
+    asyncHandler(async (req, res) => {
+      const q = z
+        .object({
+          fromCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+          toCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+          view: z.enum(["occurrence", "payment"]).optional(),
+        })
+        .safeParse(req.query);
+      if (!q.success) {
+        throw new ValidationError("Query: fromCompetencyMonth e toCompetencyMonth (YYYY-MM); view opcional.");
+      }
+      const card = await cardRepo.findById(req.params.id);
+      if (!card) throw new NotFoundError("CreditCard", req.params.id);
+      const view = q.data.view ?? "payment";
+      const [monthly, categories] = await Promise.all([
+        dashboardQueries.creditCardMonthlySeries(req.params.id, q.data.fromCompetencyMonth, q.data.toCompetencyMonth, view),
+        dashboardQueries.creditCardCategoryBreakdownInRange(
+          req.params.id,
+          q.data.fromCompetencyMonth,
+          q.data.toCompetencyMonth,
+          view,
+        ),
+      ]);
+      res.json({ creditCardId: req.params.id, view, monthly, categories });
+    }),
+  );
+
+  r.get(
+    "/credit-cards/:id",
+    asyncHandler(async (req, res) => {
+      res.json(await getCard(req.params.id));
     }),
   );
 

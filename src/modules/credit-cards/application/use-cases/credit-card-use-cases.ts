@@ -139,6 +139,14 @@ export function makeListCreditCards(repo: CreditCardRepository) {
   return () => repo.findAll();
 }
 
+export function makeGetCreditCard(repo: CreditCardRepository) {
+  return async (id: string) => {
+    const c = await repo.findById(id);
+    if (!c) throw new NotFoundError("CreditCard", id);
+    return c;
+  };
+}
+
 export function makeCreateCreditCard(repo: CreditCardRepository) {
   return (input: {
     name: string;
@@ -418,20 +426,47 @@ export function makeGetStatementDetails(
   return async (id: string) => {
     const s = await stmtRepo.findById(id);
     if (!s) throw new NotFoundError("Statement", id);
-    const installments = await instRepo.findByStatementId(id);
     const totalCents = await instRepo.sumPendingByStatementId(id);
     const withPurchase = await db.purchaseInstallment.findMany({
       where: { statementId: id },
-      include: { purchase: true },
+      include: { purchase: { include: { category: true } } },
       orderBy: [
         { purchase: { purchaseDate: "desc" } },
         { purchase: { createdAt: "desc" } },
         { installmentNumber: "desc" },
       ],
     });
+
+    const cardStatements = await stmtRepo.findByCreditCardId(s.creditCardId);
+    const idx = cardStatements.findIndex((x) => x.id === id);
+    const previousStatementId = idx > 0 ? cardStatements[idx - 1]!.id : null;
+    const nextStatementId =
+      idx >= 0 && idx < cardStatements.length - 1 ? cardStatements[idx + 1]!.id : null;
+
+    const catMap = new Map<string, { categoryId: string; categoryName: string; amountCents: number }>();
+    let totalInvoiceCents = 0;
+    for (const row of withPurchase) {
+      totalInvoiceCents += row.amountCents;
+      const cid = row.purchase.categoryId;
+      const name = row.purchase.category.name;
+      const cur = catMap.get(cid) ?? { categoryId: cid, categoryName: name, amountCents: 0 };
+      cur.amountCents += row.amountCents;
+      catMap.set(cid, cur);
+    }
+    const categoryBreakdown = [...catMap.values()].map((c) => ({
+      categoryId: c.categoryId,
+      categoryName: c.categoryName,
+      amountCents: c.amountCents,
+      percentOfTotal:
+        totalInvoiceCents > 0 ? Math.round((c.amountCents / totalInvoiceCents) * 10000) / 100 : 0,
+    }));
+
     return {
       statement: s,
       totalPendingCents: totalCents,
+      totalInvoiceCents,
+      navigation: { previousStatementId, nextStatementId },
+      categoryBreakdown,
       installments: withPurchase.map((row) => ({
         id: row.id,
         installmentNumber: row.installmentNumber,
@@ -441,6 +476,8 @@ export function makeGetStatementDetails(
         status: row.status,
         purchaseDescription: row.purchase.description,
         purchaseId: row.purchaseId,
+        categoryId: row.purchase.categoryId,
+        categoryName: row.purchase.category.name,
       })),
     };
   };

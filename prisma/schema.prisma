@@ -155,3 +155,36 @@ model PurchaseInstallment {
   @@index([purchaseId])
   @@index([competencyMonth])
 }
+
+/// Salário (ou renda) informado manualmente por mês de competência
+model MonthlyIncomePlan {
+  id                String   @id @default(uuid())
+  competencyMonth   String   @unique
+  salaryCents       Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+/// Outras rendas recebidas no mês (além do campo salário em MonthlyIncomePlan)
+model IncomeReceipt {
+  id                String   @id @default(uuid())
+  competencyMonth   String
+  amountCents       Int
+  note              String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([competencyMonth])
+}
+
+/// Valores guardados / poupança registrados por mês
+model SavingsDeposit {
+  id                String   @id @default(uuid())
+  competencyMonth   String
+  amountCents       Int
+  note              String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([competencyMonth])
+}

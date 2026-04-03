@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { createFinancialRouter } from "./modules/financial/infrastructure/http/financial-routes.js";
 import { createCreditCardRouter } from "./modules/credit-cards/infrastructure/http/credit-card-routes.js";
 import { createDashboardRouter } from "./modules/dashboard/infrastructure/http/dashboard-routes.js";
+import { createBudgetRouter } from "./modules/budget/infrastructure/http/budget-routes.js";
 import { errorHandler } from "./shared/infrastructure/http/error-handler.js";
 
 export function createApp(db: PrismaClient): Express {
@@ -22,6 +23,7 @@ export function createApp(db: PrismaClient): Express {
   app.use(createFinancialRouter(db));
   app.use(createCreditCardRouter(db));
   app.use(createDashboardRouter(db));
+  app.use(createBudgetRouter(db));
 
   app.use(errorHandler);
   return app;
