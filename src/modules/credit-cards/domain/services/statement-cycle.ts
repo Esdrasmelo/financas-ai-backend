@@ -5,29 +5,28 @@ import { addMonthsToCompetencyMonth } from "../../../financial/domain/value-obje
  * Compra **no dia do fechamento** conta na **próxima** fatura (não na que fecha nesse dia).
  */
 export function purchaseToClosingReferenceMonth(purchaseDate: Date, closingDay: number): string {
-  const y = purchaseDate.getUTCFullYear();
-  const m0 = purchaseDate.getUTCMonth();
-  const d = purchaseDate.getUTCDate();
-  if (d < closingDay) {
-    return `${y}-${String(m0 + 1).padStart(2, "0")}`;
+  const purchaseYear = purchaseDate.getUTCFullYear();
+  const purchaseMonthIndex0 = purchaseDate.getUTCMonth();
+  const purchaseDay = purchaseDate.getUTCDate();
+  if (purchaseDay < closingDay) {
+    return `${purchaseYear}-${String(purchaseMonthIndex0 + 1).padStart(2, "0")}`;
   }
-  const next = new Date(Date.UTC(y, m0 + 1, 1));
-  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+  const nextMonthStart = new Date(Date.UTC(purchaseYear, purchaseMonthIndex0 + 1, 1));
+  return `${nextMonthStart.getUTCFullYear()}-${String(nextMonthStart.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 /** Último instante UTC incluído no período da fatura (compras no `closingDay` já são da fatura seguinte). */
 function periodEndInclusiveUtc(referenceMonth: string, closingDay: number): Date {
-  const [ys, ms] = referenceMonth.split("-").map(Number);
-  const closingM0 = ms - 1;
-  const y = ys;
-  const lastInMonth = new Date(Date.UTC(y, closingM0 + 1, 0)).getUTCDate();
+  const [referenceYear, referenceMonthNum] = referenceMonth.split("-").map(Number);
+  const closingMonthIndex0 = referenceMonthNum - 1;
+  const lastInMonth = new Date(Date.UTC(referenceYear, closingMonthIndex0 + 1, 0)).getUTCDate();
 
   if (closingDay > 1) {
     const endDay = Math.min(closingDay - 1, lastInMonth);
-    return new Date(Date.UTC(y, closingM0, endDay, 23, 59, 59, 999));
+    return new Date(Date.UTC(referenceYear, closingMonthIndex0, endDay, 23, 59, 59, 999));
   }
 
-  const prevMonthLast = new Date(Date.UTC(y, closingM0, 0));
+  const prevMonthLast = new Date(Date.UTC(referenceYear, closingMonthIndex0, 0));
   return new Date(
     Date.UTC(
       prevMonthLast.getUTCFullYear(),
@@ -45,17 +44,19 @@ export function periodBoundsForReferenceMonth(
   referenceMonth: string,
   closingDay: number,
 ): { periodStart: Date; periodEnd: Date } {
-  const [ys, ms] = referenceMonth.split("-").map(Number);
-  const prevFirst = new Date(Date.UTC(ys, ms - 2, 1));
+  const [refYear, refMonthNum] = referenceMonth.split("-").map(Number);
+  const prevFirst = new Date(Date.UTC(refYear, refMonthNum - 2, 1));
   const prevYm = `${prevFirst.getUTCFullYear()}-${String(prevFirst.getUTCMonth() + 1).padStart(2, "0")}`;
 
   const periodEnd = periodEndInclusiveUtc(referenceMonth, closingDay);
   const prevEnd = periodEndInclusiveUtc(prevYm, closingDay);
 
-  const sy = prevEnd.getUTCFullYear();
-  const sm0 = prevEnd.getUTCMonth();
-  const sd = prevEnd.getUTCDate();
-  const periodStart = new Date(Date.UTC(sy, sm0, sd + 1, 0, 0, 0, 0));
+  const previousPeriodEndYear = prevEnd.getUTCFullYear();
+  const previousPeriodEndMonthIndex0 = prevEnd.getUTCMonth();
+  const previousPeriodEndDay = prevEnd.getUTCDate();
+  const periodStart = new Date(
+    Date.UTC(previousPeriodEndYear, previousPeriodEndMonthIndex0, previousPeriodEndDay + 1, 0, 0, 0, 0),
+  );
 
   return { periodStart, periodEnd };
 }
@@ -70,31 +71,31 @@ export function dueDateForReferenceMonth(
   dueDay: number,
   closingDay: number,
 ): Date {
-  const [ys, ms] = referenceMonth.split("-").map(Number);
-  const closingM0 = ms - 1;
+  const [closingRefYear, closingRefMonthNum] = referenceMonth.split("-").map(Number);
+  const closingMonthIndex0 = closingRefMonthNum - 1;
 
-  let dueYear = ys;
-  let dueM0 = closingM0;
+  let dueYear = closingRefYear;
+  let dueMonthIndex0 = closingMonthIndex0;
 
   if (dueDay < closingDay) {
-    dueM0 = closingM0 + 1;
-    if (dueM0 > 11) {
+    dueMonthIndex0 = closingMonthIndex0 + 1;
+    if (dueMonthIndex0 > 11) {
       dueYear += 1;
-      dueM0 = 0;
+      dueMonthIndex0 = 0;
     }
   }
 
-  const last = new Date(Date.UTC(dueYear, dueM0 + 1, 0)).getUTCDate();
-  const day = Math.min(dueDay, last);
-  return new Date(Date.UTC(dueYear, dueM0, day, 23, 59, 59, 999));
+  const lastDayOfDueMonth = new Date(Date.UTC(dueYear, dueMonthIndex0 + 1, 0)).getUTCDate();
+  const dueDayClamped = Math.min(dueDay, lastDayOfDueMonth);
+  return new Date(Date.UTC(dueYear, dueMonthIndex0, dueDayClamped, 23, 59, 59, 999));
 }
 
 export function closingDateForReferenceMonth(referenceMonth: string, closingDay: number): Date {
-  const [ys, ms] = referenceMonth.split("-").map(Number);
-  const m0 = ms - 1;
-  const last = new Date(Date.UTC(ys, m0 + 1, 0)).getUTCDate();
-  const day = Math.min(closingDay, last);
-  return new Date(Date.UTC(ys, m0, day, 23, 59, 59, 999));
+  const [refYear, refMonthNum] = referenceMonth.split("-").map(Number);
+  const closingMonthIndex0 = refMonthNum - 1;
+  const lastDayOfMonth = new Date(Date.UTC(refYear, closingMonthIndex0 + 1, 0)).getUTCDate();
+  const closingDayClamped = Math.min(closingDay, lastDayOfMonth);
+  return new Date(Date.UTC(refYear, closingMonthIndex0, closingDayClamped, 23, 59, 59, 999));
 }
 
 /**
@@ -132,14 +133,14 @@ export function resolvePurchaseTotalAndInstallmentMode(input: {
   totalAmountCents: number;
   installmentAmountCents?: number | null;
 }): { totalAmountCents: number; equalInstallmentCents?: number } {
-  const n = input.totalInstallments;
-  if (!input.isInstallmentPurchase || n < 1) {
+  const installmentCount = input.totalInstallments;
+  if (!input.isInstallmentPurchase || installmentCount < 1) {
     return { totalAmountCents: input.totalAmountCents };
   }
-  const per = input.installmentAmountCents;
-  if (per != null && per > 0) {
-    const total = per * n;
-    return { totalAmountCents: total, equalInstallmentCents: per };
+  const installmentAmountCents = input.installmentAmountCents;
+  if (installmentAmountCents != null && installmentAmountCents > 0) {
+    const derivedTotalCents = installmentAmountCents * installmentCount;
+    return { totalAmountCents: derivedTotalCents, equalInstallmentCents: installmentAmountCents };
   }
   return { totalAmountCents: input.totalAmountCents };
 }

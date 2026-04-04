@@ -11,14 +11,14 @@ export class PrismaPurchaseInstallmentRepository implements PurchaseInstallmentR
   async createMany(inputs: CreatePurchaseInstallmentInput[]) {
     if (inputs.length === 0) return;
     await this.db.purchaseInstallment.createMany({
-      data: inputs.map((i) => ({
-        purchaseId: i.purchaseId,
-        statementId: i.statementId,
-        installmentNumber: i.installmentNumber,
-        totalInstallments: i.totalInstallments,
-        amountCents: i.amountCents,
-        competencyMonth: i.competencyMonth,
-        status: i.status ?? "pending",
+      data: inputs.map((input) => ({
+        purchaseId: input.purchaseId,
+        statementId: input.statementId,
+        installmentNumber: input.installmentNumber,
+        totalInstallments: input.totalInstallments,
+        amountCents: input.amountCents,
+        competencyMonth: input.competencyMonth,
+        status: input.status ?? "pending",
       })),
     });
   }

@@ -7,9 +7,9 @@ export function makeListCategories(repo: CategoryRepository) {
 
 export function makeGetCategory(repo: CategoryRepository) {
   return async (id: string) => {
-    const c = await repo.findById(id);
-    if (!c) throw new NotFoundError("Category", id);
-    return c;
+    const category = await repo.findById(id);
+    if (!category) throw new NotFoundError("Category", id);
+    return category;
   };
 }
 

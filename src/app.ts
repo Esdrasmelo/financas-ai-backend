@@ -7,7 +7,7 @@ import { createDashboardRouter } from "./modules/dashboard/infrastructure/http/d
 import { createBudgetRouter } from "./modules/budget/infrastructure/http/budget-routes.js";
 import { errorHandler } from "./shared/infrastructure/http/error-handler.js";
 
-export function createApp(db: PrismaClient): Express {
+export function createApp(prisma: PrismaClient): Express {
   const app = express();
   app.use(
     cors({
@@ -20,10 +20,10 @@ export function createApp(db: PrismaClient): Express {
     res.json({ ok: true, service: "financasai-backend" });
   });
 
-  app.use(createFinancialRouter(db));
-  app.use(createCreditCardRouter(db));
-  app.use(createDashboardRouter(db));
-  app.use(createBudgetRouter(db));
+  app.use(createFinancialRouter(prisma));
+  app.use(createCreditCardRouter(prisma));
+  app.use(createDashboardRouter(prisma));
+  app.use(createBudgetRouter(prisma));
 
   app.use(errorHandler);
   return app;

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Request, Response } from "express";
+import type { Request } from "express";
 import { asyncHandler } from "../../../../shared/infrastructure/http/error-handler.js";
 import { ValidationError } from "../../../../shared/domain/errors/domain-error.js";
 import type { PrismaClient } from "@prisma/client";
@@ -73,36 +73,36 @@ const entryUpdateSchema = z.object({
 });
 
 function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
-  const r = schema.safeParse(req.body);
-  if (!r.success) {
-    throw new ValidationError(r.error.flatten().formErrors.join("; "));
+  const bodyParseResult = schema.safeParse(req.body);
+  if (!bodyParseResult.success) {
+    throw new ValidationError(bodyParseResult.error.flatten().formErrors.join("; "));
   }
-  return r.data;
+  return bodyParseResult.data;
 }
 
-export function createFinancialRouter(db: PrismaClient): Router {
-  const r = Router();
-  const catRepo = new PrismaCategoryRepository(db);
-  const fixedRepo = new PrismaFixedExpenseRepository(db);
-  const entryRepo = new PrismaMonthlyEntryRepository(db);
+export function createFinancialRouter(prisma: PrismaClient): Router {
+  const router = Router();
+  const categoryRepo = new PrismaCategoryRepository(prisma);
+  const fixedRepo = new PrismaFixedExpenseRepository(prisma);
+  const entryRepo = new PrismaMonthlyEntryRepository(prisma);
 
-  const listCategories = makeListCategories(catRepo);
-  const createCategory = makeCreateCategory(catRepo);
-  const updateCategory = makeUpdateCategory(catRepo);
-  const deleteCategory = makeDeleteCategory(catRepo);
+  const listCategories = makeListCategories(categoryRepo);
+  const createCategory = makeCreateCategory(categoryRepo);
+  const updateCategory = makeUpdateCategory(categoryRepo);
+  const deleteCategory = makeDeleteCategory(categoryRepo);
 
   const listFixed = makeListFixedExpenses(fixedRepo);
-  const createFixed = makeCreateFixedExpense(fixedRepo, catRepo);
-  const updateFixed = makeUpdateFixedExpense(fixedRepo, catRepo);
+  const createFixed = makeCreateFixedExpense(fixedRepo, categoryRepo);
+  const updateFixed = makeUpdateFixedExpense(fixedRepo, categoryRepo);
   const disableFixed = makeDisableFixedExpense(fixedRepo);
   const genMonthly = makeGenerateMonthlyEntriesFromFixedExpenses(fixedRepo, entryRepo);
-  const registerVar = makeRegisterVariableExpense(entryRepo, catRepo);
+  const registerVar = makeRegisterVariableExpense(entryRepo, categoryRepo);
   const listEntries = makeListMonthlyEntries(entryRepo);
   const summaryEntries = makeGetMonthlyEntriesSummary(entryRepo);
-  const updateEntry = makeUpdateMonthlyEntry(entryRepo, catRepo);
+  const updateEntry = makeUpdateMonthlyEntry(entryRepo, categoryRepo);
   const deleteEntry = makeDeleteMonthlyEntry(entryRepo);
 
-  r.get(
+  router.get(
     "/categories",
     asyncHandler(async (_req, res) => {
       const data = await listCategories();
@@ -110,7 +110,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.post(
+  router.post(
     "/categories",
     asyncHandler(async (req, res) => {
       const body = parseBody(categoryCreateSchema, req);
@@ -119,7 +119,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.put(
+  router.put(
     "/categories/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(categoryUpdateSchema, req);
@@ -128,7 +128,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.delete(
+  router.delete(
     "/categories/:id",
     asyncHandler(async (req, res) => {
       await deleteCategory(req.params.id);
@@ -136,14 +136,14 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.get(
+  router.get(
     "/fixed-expenses",
     asyncHandler(async (_req, res) => {
       res.json(await listFixed());
     }),
   );
 
-  r.post(
+  router.post(
     "/fixed-expenses",
     asyncHandler(async (req, res) => {
       const body = parseBody(fixedExpenseCreateSchema, req);
@@ -152,7 +152,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.put(
+  router.put(
     "/fixed-expenses/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(fixedExpenseUpdateSchema, req);
@@ -161,7 +161,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.patch(
+  router.patch(
     "/fixed-expenses/:id/disable",
     asyncHandler(async (req, res) => {
       const data = await disableFixed(req.params.id);
@@ -169,7 +169,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.post(
+  router.post(
     "/fixed-expenses/generate-monthly-entries",
     asyncHandler(async (req, res) => {
       const schema = z.object({ competencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
@@ -179,29 +179,33 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.get(
+  router.get(
     "/entries",
     asyncHandler(async (req, res) => {
-      const q = z
+      const queryParseResult = z
         .object({ competencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) })
         .safeParse(req.query);
-      if (!q.success) throw new ValidationError("query competencyMonth YYYY-MM obrigatório");
-      res.json(await listEntries(q.data.competencyMonth));
+      if (!queryParseResult.success) {
+        throw new ValidationError("query competencyMonth YYYY-MM obrigatório");
+      }
+      res.json(await listEntries(queryParseResult.data.competencyMonth));
     }),
   );
 
-  r.get(
+  router.get(
     "/entries/monthly-summary",
     asyncHandler(async (req, res) => {
-      const q = z
+      const queryParseResult = z
         .object({ competencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) })
         .safeParse(req.query);
-      if (!q.success) throw new ValidationError("query competencyMonth YYYY-MM obrigatório");
-      res.json(await summaryEntries(q.data.competencyMonth));
+      if (!queryParseResult.success) {
+        throw new ValidationError("query competencyMonth YYYY-MM obrigatório");
+      }
+      res.json(await summaryEntries(queryParseResult.data.competencyMonth));
     }),
   );
 
-  r.post(
+  router.post(
     "/entries",
     asyncHandler(async (req, res) => {
       const body = parseBody(entryCreateSchema, req);
@@ -213,7 +217,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.put(
+  router.put(
     "/entries/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(entryUpdateSchema, req);
@@ -225,7 +229,7 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.delete(
+  router.delete(
     "/entries/:id",
     asyncHandler(async (req, res) => {
       await deleteEntry(req.params.id);
@@ -233,5 +237,5 @@ export function createFinancialRouter(db: PrismaClient): Router {
     }),
   );
 
-  return r;
+  return router;
 }

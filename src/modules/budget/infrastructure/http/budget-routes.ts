@@ -9,48 +9,51 @@ import { DashboardQueries, type CompetencyView } from "../../../dashboard/infras
 const ymParam = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
-  const r = schema.safeParse(req.body);
-  if (!r.success) {
-    throw new ValidationError(r.error.flatten().formErrors.join("; "));
+  const bodyParseResult = schema.safeParse(req.body);
+  if (!bodyParseResult.success) {
+    throw new ValidationError(bodyParseResult.error.flatten().formErrors.join("; "));
   }
-  return r.data;
+  return bodyParseResult.data;
 }
 
-export function createBudgetRouter(db: PrismaClient): Router {
-  const r = Router();
-  const dq = new DashboardQueries(db);
+export function createBudgetRouter(prisma: PrismaClient): Router {
+  const router = Router();
+  const dashboardQueries = new DashboardQueries(prisma);
 
-  r.get(
+  router.get(
     "/budget/month/:competencyMonth",
     asyncHandler(async (req, res) => {
-      const pr = ymParam.safeParse(req.params.competencyMonth);
-      if (!pr.success) throw new ValidationError("competencyMonth deve ser YYYY-MM");
-      const viewQ = z.enum(["occurrence", "payment"]).optional().safeParse(req.query.view);
-      const view: CompetencyView = viewQ.success && viewQ.data ? viewQ.data : "payment";
+      const competencyMonthParse = ymParam.safeParse(req.params.competencyMonth);
+      if (!competencyMonthParse.success) throw new ValidationError("competencyMonth deve ser YYYY-MM");
+      const viewQuery = z.enum(["occurrence", "payment"]).optional().safeParse(req.query.view);
+      const view: CompetencyView = viewQuery.success && viewQuery.data ? viewQuery.data : "payment";
 
       const [plan, savings, incomeReceipts, summary] = await Promise.all([
-        db.monthlyIncomePlan.findUnique({ where: { competencyMonth: pr.data } }),
-        db.savingsDeposit.findMany({
-          where: { competencyMonth: pr.data },
+        prisma.monthlyIncomePlan.findUnique({ where: { competencyMonth: competencyMonthParse.data } }),
+        prisma.savingsDeposit.findMany({
+          where: { competencyMonth: competencyMonthParse.data },
           orderBy: { createdAt: "desc" },
         }),
-        db.incomeReceipt.findMany({
-          where: { competencyMonth: pr.data },
+        prisma.incomeReceipt.findMany({
+          where: { competencyMonth: competencyMonthParse.data },
           orderBy: { createdAt: "desc" },
         }),
-        dq.monthlySummary(pr.data, view),
+        dashboardQueries.monthlySummary(competencyMonthParse.data, view),
       ]);
 
       const salaryCents = plan?.salaryCents ?? null;
-      const incomeReceiptsTotalCents = incomeReceipts.reduce((a, r) => a + r.amountCents, 0);
+      const incomeReceiptsTotalCents = incomeReceipts.reduce(
+        (sum, receipt) => sum + receipt.amountCents,
+        0,
+      );
       const totalReceivedCents = (salaryCents ?? 0) + incomeReceiptsTotalCents;
       const hasIncomeConfigured = salaryCents != null || incomeReceipts.length > 0;
       const surplusCents = hasIncomeConfigured ? totalReceivedCents - summary.totalSpentCents : null;
 
-      const savingsTotalCents = savings.reduce((a, s) => a + s.amountCents, 0);
+      const savingsTotalCents = savings.reduce((sum, deposit) => sum + deposit.amountCents, 0);
 
       res.json({
-        competencyMonth: pr.data,
+        competencyMonth: competencyMonthParse.data,
         view,
         salaryCents,
         incomeReceipts,
@@ -65,27 +68,27 @@ export function createBudgetRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.put(
+  router.put(
     "/budget/month/:competencyMonth",
     asyncHandler(async (req, res) => {
-      const pr = ymParam.safeParse(req.params.competencyMonth);
-      if (!pr.success) throw new ValidationError("competencyMonth deve ser YYYY-MM");
+      const competencyMonthParse = ymParam.safeParse(req.params.competencyMonth);
+      if (!competencyMonthParse.success) throw new ValidationError("competencyMonth deve ser YYYY-MM");
       const body = parseBody(
         z.object({
           salaryCents: z.number().int().nonnegative().nullable(),
         }),
         req,
       );
-      const row = await db.monthlyIncomePlan.upsert({
-        where: { competencyMonth: pr.data },
-        create: { competencyMonth: pr.data, salaryCents: body.salaryCents },
+      const row = await prisma.monthlyIncomePlan.upsert({
+        where: { competencyMonth: competencyMonthParse.data },
+        create: { competencyMonth: competencyMonthParse.data, salaryCents: body.salaryCents },
         update: { salaryCents: body.salaryCents },
       });
       res.json(row);
     }),
   );
 
-  r.post(
+  router.post(
     "/budget/income-receipts",
     asyncHandler(async (req, res) => {
       const body = parseBody(
@@ -96,7 +99,7 @@ export function createBudgetRouter(db: PrismaClient): Router {
         }),
         req,
       );
-      const row = await db.incomeReceipt.create({
+      const row = await prisma.incomeReceipt.create({
         data: {
           competencyMonth: body.competencyMonth,
           amountCents: body.amountCents,
@@ -107,16 +110,16 @@ export function createBudgetRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.delete(
+  router.delete(
     "/budget/income-receipts/:id",
     asyncHandler(async (req, res) => {
-      const del = await db.incomeReceipt.deleteMany({ where: { id: req.params.id } });
-      if (del.count === 0) throw new NotFoundError("IncomeReceipt", req.params.id);
+      const deleteResult = await prisma.incomeReceipt.deleteMany({ where: { id: req.params.id } });
+      if (deleteResult.count === 0) throw new NotFoundError("IncomeReceipt", req.params.id);
       res.status(204).send();
     }),
   );
 
-  r.post(
+  router.post(
     "/budget/savings",
     asyncHandler(async (req, res) => {
       const body = parseBody(
@@ -127,7 +130,7 @@ export function createBudgetRouter(db: PrismaClient): Router {
         }),
         req,
       );
-      const row = await db.savingsDeposit.create({
+      const row = await prisma.savingsDeposit.create({
         data: {
           competencyMonth: body.competencyMonth,
           amountCents: body.amountCents,
@@ -138,14 +141,14 @@ export function createBudgetRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.delete(
+  router.delete(
     "/budget/savings/:id",
     asyncHandler(async (req, res) => {
-      const del = await db.savingsDeposit.deleteMany({ where: { id: req.params.id } });
-      if (del.count === 0) throw new NotFoundError("SavingsDeposit", req.params.id);
+      const deleteResult = await prisma.savingsDeposit.deleteMany({ where: { id: req.params.id } });
+      if (deleteResult.count === 0) throw new NotFoundError("SavingsDeposit", req.params.id);
       res.status(204).send();
     }),
   );
 
-  return r;
+  return router;
 }

@@ -62,16 +62,16 @@ async function createInstallmentsForPurchaseTx(
     creditCardId: string;
     purchaseDate: Date;
     totalAmountCents: number;
-    totalInst: number;
-    curInst: number;
+    totalInstallments: number;
+    currentInstallment: number;
     card: CreditCard;
     equalInstallmentCents?: number;
   },
 ): Promise<InstallmentPreviewRow[]> {
   const amounts =
     params.equalInstallmentCents != null
-      ? Array.from({ length: params.totalInst }, () => params.equalInstallmentCents!)
-      : splitInstallmentCents(params.totalAmountCents, params.totalInst);
+      ? Array.from({ length: params.totalInstallments }, () => params.equalInstallmentCents!)
+      : splitInstallmentCents(params.totalAmountCents, params.totalInstallments);
   const firstClosingRef = purchaseToClosingReferenceMonth(params.purchaseDate, params.card.closingDay);
   const preview: InstallmentPreviewRow[] = [];
   const installmentRows: {
@@ -83,7 +83,7 @@ async function createInstallmentsForPurchaseTx(
     competencyMonth: string;
   }[] = [];
 
-  for (let i = params.curInst; i <= params.totalInst; i++) {
+  for (let i = params.currentInstallment; i <= params.totalInstallments; i++) {
     const refMonth = installmentClosingReferenceMonth(firstClosingRef, i);
     const dueDate = dueDateForReferenceMonth(refMonth, params.card.dueDay, params.card.closingDay);
     preview.push({
@@ -96,7 +96,7 @@ async function createInstallmentsForPurchaseTx(
     const { periodStart, periodEnd } = periodBoundsForReferenceMonth(refMonth, params.card.closingDay);
     const closingDate = closingDateForReferenceMonth(refMonth, params.card.closingDay);
 
-    let stmt = await tx.statement.findUnique({
+    let statementRow = await tx.statement.findUnique({
       where: {
         creditCardId_referenceMonth: {
           creditCardId: params.creditCardId,
@@ -104,8 +104,8 @@ async function createInstallmentsForPurchaseTx(
         },
       },
     });
-    if (!stmt) {
-      stmt = await tx.statement.create({
+    if (!statementRow) {
+      statementRow = await tx.statement.create({
         data: {
           creditCardId: params.creditCardId,
           referenceMonth: refMonth,
@@ -120,9 +120,9 @@ async function createInstallmentsForPurchaseTx(
 
     installmentRows.push({
       purchaseId: params.purchaseId,
-      statementId: stmt.id,
+      statementId: statementRow.id,
       installmentNumber: i,
-      totalInstallments: params.totalInst,
+      totalInstallments: params.totalInstallments,
       amountCents: amounts[i - 1]!,
       competencyMonth: refMonth,
     });
@@ -141,9 +141,9 @@ export function makeListCreditCards(repo: CreditCardRepository) {
 
 export function makeGetCreditCard(repo: CreditCardRepository) {
   return async (id: string) => {
-    const c = await repo.findById(id);
-    if (!c) throw new NotFoundError("CreditCard", id);
-    return c;
+    const creditCard = await repo.findById(id);
+    if (!creditCard) throw new NotFoundError("CreditCard", id);
+    return creditCard;
   };
 }
 
@@ -174,8 +174,8 @@ export function makeUpdateCreditCard(repo: CreditCardRepository) {
       isActive?: boolean;
     },
   ) => {
-    const c = await repo.findById(id);
-    if (!c) throw new NotFoundError("CreditCard", id);
+    const creditCard = await repo.findById(id);
+    if (!creditCard) throw new NotFoundError("CreditCard", id);
     if (input.closingDay !== undefined) assertDueDay(input.closingDay, "dia de fechamento");
     if (input.dueDay !== undefined) assertDueDay(input.dueDay, "dia de vencimento");
     return repo.update(id, input);
@@ -185,12 +185,20 @@ export function makeUpdateCreditCard(repo: CreditCardRepository) {
 export function makeEstimateStatementCycle() {
   return (input: { purchaseDate: Date; closingDay: number; dueDay: number; installmentNumber?: number }) => {
     const firstRef = purchaseToClosingReferenceMonth(input.purchaseDate, input.closingDay);
-    const n = input.installmentNumber ?? 1;
-    const referenceMonth = installmentClosingReferenceMonth(firstRef, n);
+    const activeInstallmentNumber = input.installmentNumber ?? 1;
+    const referenceMonth = installmentClosingReferenceMonth(firstRef, activeInstallmentNumber);
     const { periodStart, periodEnd } = periodBoundsForReferenceMonth(referenceMonth, input.closingDay);
     const closingDate = closingDateForReferenceMonth(referenceMonth, input.closingDay);
     const dueDate = dueDateForReferenceMonth(referenceMonth, input.dueDay, input.closingDay);
-    return { referenceMonth, firstInstallmentReferenceMonth: firstRef, installmentNumber: n, periodStart, periodEnd, closingDate, dueDate };
+    return {
+      referenceMonth,
+      firstInstallmentReferenceMonth: firstRef,
+      installmentNumber: activeInstallmentNumber,
+      periodStart,
+      periodEnd,
+      closingDate,
+      dueDate,
+    };
   };
 }
 
@@ -211,25 +219,25 @@ export function makeRegisterCreditCardPurchase(
     currentInstallment: number;
     installmentAmountCents?: number | null;
   }) => {
-    const card = await cardRepo.findById(input.creditCardId);
-    if (!card) throw new NotFoundError("CreditCard", input.creditCardId);
-    const cat = await catRepo.findById(input.categoryId);
-    if (!cat) throw new NotFoundError("Category", input.categoryId);
+    const creditCard = await cardRepo.findById(input.creditCardId);
+    if (!creditCard) throw new NotFoundError("CreditCard", input.creditCardId);
+    const category = await catRepo.findById(input.categoryId);
+    if (!category) throw new NotFoundError("Category", input.categoryId);
 
-    let totalInst = input.totalInstallments;
-    let curInst = input.currentInstallment;
+    let effectiveTotalInstallments = input.totalInstallments;
+    let effectiveCurrentInstallment = input.currentInstallment;
     if (!input.isInstallmentPurchase) {
-      totalInst = 1;
-      curInst = 1;
+      effectiveTotalInstallments = 1;
+      effectiveCurrentInstallment = 1;
     }
-    if (totalInst < 1) throw new ValidationError("total de parcelas deve ser >= 1");
-    if (curInst < 1 || curInst > totalInst) {
+    if (effectiveTotalInstallments < 1) throw new ValidationError("total de parcelas deve ser >= 1");
+    if (effectiveCurrentInstallment < 1 || effectiveCurrentInstallment > effectiveTotalInstallments) {
       throw new ValidationError("parcela atual inválida");
     }
 
     const resolved = resolvePurchaseTotalAndInstallmentMode({
       isInstallmentPurchase: input.isInstallmentPurchase,
-      totalInstallments: totalInst,
+      totalInstallments: effectiveTotalInstallments,
       totalAmountCents: input.totalAmountCents,
       installmentAmountCents: input.installmentAmountCents,
     });
@@ -243,8 +251,8 @@ export function makeRegisterCreditCardPurchase(
 
     const amounts =
       resolved.equalInstallmentCents != null
-        ? Array.from({ length: totalInst }, () => resolved.equalInstallmentCents!)
-        : splitInstallmentCents(resolved.totalAmountCents, totalInst);
+        ? Array.from({ length: effectiveTotalInstallments }, () => resolved.equalInstallmentCents!)
+        : splitInstallmentCents(resolved.totalAmountCents, effectiveTotalInstallments);
 
     const result = await db.$transaction(async (tx) => {
       const purchaseRow = await tx.creditCardPurchase.create({
@@ -255,9 +263,10 @@ export function makeRegisterCreditCardPurchase(
           purchaseDate: input.purchaseDate,
           totalAmountCents: resolved.totalAmountCents,
           isInstallmentPurchase: input.isInstallmentPurchase,
-          totalInstallments: totalInst,
-          currentInstallment: curInst,
-          installmentAmountCents: totalInst > 1 ? amounts[curInst - 1]! : resolved.totalAmountCents,
+          totalInstallments: effectiveTotalInstallments,
+          currentInstallment: effectiveCurrentInstallment,
+          installmentAmountCents:
+            effectiveTotalInstallments > 1 ? amounts[effectiveCurrentInstallment - 1]! : resolved.totalAmountCents,
         },
       });
 
@@ -266,9 +275,9 @@ export function makeRegisterCreditCardPurchase(
         creditCardId: input.creditCardId,
         purchaseDate: input.purchaseDate,
         totalAmountCents: resolved.totalAmountCents,
-        totalInst,
-        curInst,
-        card,
+        totalInstallments: effectiveTotalInstallments,
+        currentInstallment: effectiveCurrentInstallment,
+        card: creditCard,
         equalInstallmentCents: resolved.equalInstallmentCents,
       });
 
@@ -302,26 +311,26 @@ export function makeUpdateCreditCardPurchase(
     const existing = await purRepo.findById(id);
     if (!existing) throw new NotFoundError("CreditCardPurchase", id);
 
-    const cat = await catRepo.findById(input.categoryId);
-    if (!cat) throw new NotFoundError("Category", input.categoryId);
+    const category = await catRepo.findById(input.categoryId);
+    if (!category) throw new NotFoundError("Category", input.categoryId);
 
-    const card = await cardRepo.findById(existing.creditCardId);
-    if (!card) throw new NotFoundError("CreditCard", existing.creditCardId);
+    const creditCard = await cardRepo.findById(existing.creditCardId);
+    if (!creditCard) throw new NotFoundError("CreditCard", existing.creditCardId);
 
-    let totalInst = input.totalInstallments;
-    let curInst = input.currentInstallment;
+    let effectiveTotalInstallments = input.totalInstallments;
+    let effectiveCurrentInstallment = input.currentInstallment;
     if (!input.isInstallmentPurchase) {
-      totalInst = 1;
-      curInst = 1;
+      effectiveTotalInstallments = 1;
+      effectiveCurrentInstallment = 1;
     }
-    if (totalInst < 1) throw new ValidationError("total de parcelas deve ser >= 1");
-    if (curInst < 1 || curInst > totalInst) {
+    if (effectiveTotalInstallments < 1) throw new ValidationError("total de parcelas deve ser >= 1");
+    if (effectiveCurrentInstallment < 1 || effectiveCurrentInstallment > effectiveTotalInstallments) {
       throw new ValidationError("parcela atual inválida");
     }
 
     const resolved = resolvePurchaseTotalAndInstallmentMode({
       isInstallmentPurchase: input.isInstallmentPurchase,
-      totalInstallments: totalInst,
+      totalInstallments: effectiveTotalInstallments,
       totalAmountCents: input.totalAmountCents,
       installmentAmountCents: input.installmentAmountCents,
     });
@@ -335,16 +344,16 @@ export function makeUpdateCreditCardPurchase(
 
     const amounts =
       resolved.equalInstallmentCents != null
-        ? Array.from({ length: totalInst }, () => resolved.equalInstallmentCents!)
-        : splitInstallmentCents(resolved.totalAmountCents, totalInst);
+        ? Array.from({ length: effectiveTotalInstallments }, () => resolved.equalInstallmentCents!)
+        : splitInstallmentCents(resolved.totalAmountCents, effectiveTotalInstallments);
 
-    const instRows = await db.purchaseInstallment.findMany({
+    const installmentRows = await db.purchaseInstallment.findMany({
       where: { purchaseId: id },
       include: { statement: true },
     });
     const touchesPaid =
-      instRows.length > 0 &&
-      instRows.some((row) => row.statement.status === "paid" || row.status === "paid");
+      installmentRows.length > 0 &&
+      installmentRows.some((row) => row.statement.status === "paid" || row.status === "paid");
 
     if (
       touchesPaid &&
@@ -352,8 +361,8 @@ export function makeUpdateCreditCardPurchase(
         purchaseDate: input.purchaseDate,
         totalAmountCents: resolved.totalAmountCents,
         isInstallmentPurchase: input.isInstallmentPurchase,
-        totalInstallments: totalInst,
-        currentInstallment: curInst,
+        totalInstallments: effectiveTotalInstallments,
+        currentInstallment: effectiveCurrentInstallment,
       })
     ) {
       throw new ValidationError(
@@ -383,9 +392,12 @@ export function makeUpdateCreditCardPurchase(
           purchaseDate: input.purchaseDate,
           totalAmountCents: resolved.totalAmountCents,
           isInstallmentPurchase: input.isInstallmentPurchase,
-          totalInstallments: totalInst,
-          currentInstallment: curInst,
-          installmentAmountCents: totalInst > 1 ? amounts[curInst - 1]! : resolved.totalAmountCents,
+          totalInstallments: effectiveTotalInstallments,
+          currentInstallment: effectiveCurrentInstallment,
+          installmentAmountCents:
+            effectiveTotalInstallments > 1
+              ? amounts[effectiveCurrentInstallment - 1]!
+              : resolved.totalAmountCents,
         },
       });
       const preview = await createInstallmentsForPurchaseTx(tx, {
@@ -393,9 +405,9 @@ export function makeUpdateCreditCardPurchase(
         creditCardId: existing.creditCardId,
         purchaseDate: input.purchaseDate,
         totalAmountCents: resolved.totalAmountCents,
-        totalInst,
-        curInst,
-        card,
+        totalInstallments: effectiveTotalInstallments,
+        currentInstallment: effectiveCurrentInstallment,
+        card: creditCard,
         equalInstallmentCents: resolved.equalInstallmentCents,
       });
       return { preview };
@@ -408,8 +420,8 @@ export function makeUpdateCreditCardPurchase(
 
 export function makeListStatementsByCard(stmtRepo: StatementRepository, cardRepo: CreditCardRepository) {
   return async (creditCardId: string) => {
-    const c = await cardRepo.findById(creditCardId);
-    if (!c) throw new NotFoundError("CreditCard", creditCardId);
+    const creditCard = await cardRepo.findById(creditCardId);
+    if (!creditCard) throw new NotFoundError("CreditCard", creditCardId);
     return stmtRepo.findByCreditCardId(creditCardId);
   };
 }
@@ -424,10 +436,10 @@ export function makeGetStatementDetails(
   db: PrismaClient,
 ) {
   return async (id: string) => {
-    const s = await stmtRepo.findById(id);
-    if (!s) throw new NotFoundError("Statement", id);
+    const statement = await stmtRepo.findById(id);
+    if (!statement) throw new NotFoundError("Statement", id);
     const totalCents = await instRepo.sumPendingByStatementId(id);
-    const withPurchase = await db.purchaseInstallment.findMany({
+    const installmentsWithPurchase = await db.purchaseInstallment.findMany({
       where: { statementId: id },
       include: { purchase: { include: { category: true } } },
       orderBy: [
@@ -437,37 +449,50 @@ export function makeGetStatementDetails(
       ],
     });
 
-    const cardStatements = await stmtRepo.findByCreditCardId(s.creditCardId);
-    const idx = cardStatements.findIndex((x) => x.id === id);
-    const previousStatementId = idx > 0 ? cardStatements[idx - 1]!.id : null;
+    const statementsForCard = await stmtRepo.findByCreditCardId(statement.creditCardId);
+    const statementIndex = statementsForCard.findIndex((stmt) => stmt.id === id);
+    const previousStatementId =
+      statementIndex > 0 ? statementsForCard[statementIndex - 1]!.id : null;
     const nextStatementId =
-      idx >= 0 && idx < cardStatements.length - 1 ? cardStatements[idx + 1]!.id : null;
+      statementIndex >= 0 && statementIndex < statementsForCard.length - 1
+        ? statementsForCard[statementIndex + 1]!.id
+        : null;
 
-    const catMap = new Map<string, { categoryId: string; categoryName: string; amountCents: number }>();
+    const categoryTotalsById = new Map<
+      string,
+      { categoryId: string; categoryName: string; amountCents: number }
+    >();
     let totalInvoiceCents = 0;
-    for (const row of withPurchase) {
+    for (const row of installmentsWithPurchase) {
       totalInvoiceCents += row.amountCents;
-      const cid = row.purchase.categoryId;
-      const name = row.purchase.category.name;
-      const cur = catMap.get(cid) ?? { categoryId: cid, categoryName: name, amountCents: 0 };
-      cur.amountCents += row.amountCents;
-      catMap.set(cid, cur);
+      const categoryId = row.purchase.categoryId;
+      const categoryName = row.purchase.category.name;
+      const categoryTotal =
+        categoryTotalsById.get(categoryId) ?? {
+          categoryId,
+          categoryName,
+          amountCents: 0,
+        };
+      categoryTotal.amountCents += row.amountCents;
+      categoryTotalsById.set(categoryId, categoryTotal);
     }
-    const categoryBreakdown = [...catMap.values()].map((c) => ({
-      categoryId: c.categoryId,
-      categoryName: c.categoryName,
-      amountCents: c.amountCents,
+    const categoryBreakdown = [...categoryTotalsById.values()].map((breakdown) => ({
+      categoryId: breakdown.categoryId,
+      categoryName: breakdown.categoryName,
+      amountCents: breakdown.amountCents,
       percentOfTotal:
-        totalInvoiceCents > 0 ? Math.round((c.amountCents / totalInvoiceCents) * 10000) / 100 : 0,
+        totalInvoiceCents > 0
+          ? Math.round((breakdown.amountCents / totalInvoiceCents) * 10000) / 100
+          : 0,
     }));
 
     return {
-      statement: s,
+      statement,
       totalPendingCents: totalCents,
       totalInvoiceCents,
       navigation: { previousStatementId, nextStatementId },
       categoryBreakdown,
-      installments: withPurchase.map((row) => ({
+      installments: installmentsWithPurchase.map((row) => ({
         id: row.id,
         installmentNumber: row.installmentNumber,
         totalInstallments: row.totalInstallments,
@@ -485,8 +510,8 @@ export function makeGetStatementDetails(
 
 export function makeMarkStatementPaid(stmtRepo: StatementRepository) {
   return async (id: string) => {
-    const s = await stmtRepo.findById(id);
-    if (!s) throw new NotFoundError("Statement", id);
+    const statement = await stmtRepo.findById(id);
+    if (!statement) throw new NotFoundError("Statement", id);
     return stmtRepo.updateStatus(id, "paid");
   };
 }
@@ -497,9 +522,9 @@ export function makeListCreditCardPurchases(purRepo: CreditCardPurchaseRepositor
 
 export function makeGetCreditCardPurchase(purRepo: CreditCardPurchaseRepository) {
   return async (id: string) => {
-    const p = await purRepo.findById(id);
-    if (!p) throw new NotFoundError("CreditCardPurchase", id);
-    return p;
+    const purchase = await purRepo.findById(id);
+    if (!purchase) throw new NotFoundError("CreditCardPurchase", id);
+    return purchase;
   };
 }
 

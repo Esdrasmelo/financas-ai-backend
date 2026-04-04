@@ -24,8 +24,8 @@ export function makeCreateFixedExpense(fixedRepo: FixedExpenseRepository, catRep
   }) => {
     assertNonNegativeCents(input.amountCents, "valor");
     assertDueDay(input.dueDay, "dia de vencimento");
-    const cat = await catRepo.findById(input.categoryId);
-    if (!cat) throw new NotFoundError("Category", input.categoryId);
+    const category = await catRepo.findById(input.categoryId);
+    if (!category) throw new NotFoundError("Category", input.categoryId);
     return fixedRepo.create(input);
   };
 }
@@ -49,8 +49,8 @@ export function makeUpdateFixedExpense(fixedRepo: FixedExpenseRepository, catRep
     if (input.amountCents !== undefined) assertNonNegativeCents(input.amountCents, "valor");
     if (input.dueDay !== undefined) assertDueDay(input.dueDay, "dia de vencimento");
     if (input.categoryId !== undefined) {
-      const cat = await catRepo.findById(input.categoryId);
-      if (!cat) throw new NotFoundError("Category", input.categoryId);
+      const category = await catRepo.findById(input.categoryId);
+      if (!category) throw new NotFoundError("Category", input.categoryId);
     }
     return fixedRepo.update(id, input);
   };
@@ -74,36 +74,36 @@ export function makeGenerateMonthlyEntriesFromFixedExpenses(
     const created: string[] = [];
     const skipped: string[] = [];
 
-    for (const fe of active) {
-      const exists = await entriesRepo.existsForFixedExpenseAndMonth(fe.id, competencyMonth);
+    for (const fixedExpense of active) {
+      const exists = await entriesRepo.existsForFixedExpenseAndMonth(fixedExpense.id, competencyMonth);
       if (exists) {
-        skipped.push(fe.id);
+        skipped.push(fixedExpense.id);
         continue;
       }
-      const day = Math.min(fe.dueDay, 28);
-      const [y, m] = competencyMonth.split("-").map(Number);
-      const date = new Date(Date.UTC(y, m - 1, day, 12, 0, 0, 0));
+      const day = Math.min(fixedExpense.dueDay, 28);
+      const [year, monthNum] = competencyMonth.split("-").map(Number);
+      const date = new Date(Date.UTC(year, monthNum - 1, day, 12, 0, 0, 0));
 
-      let amountCents = fe.amountCents;
-      if (fe.isVariableAmount) {
+      let amountCents = fixedExpense.amountCents;
+      if (fixedExpense.isVariableAmount) {
         const prevMonth = addMonthsToCompetencyMonth(competencyMonth, -1);
-        const prevEntry = await entriesRepo.findFixedExpenseEntryForMonth(fe.id, prevMonth);
+        const prevEntry = await entriesRepo.findFixedExpenseEntryForMonth(fixedExpense.id, prevMonth);
         if (prevEntry) {
           amountCents = prevEntry.amountCents;
         }
       }
 
       await entriesRepo.create({
-        description: fe.name,
+        description: fixedExpense.name,
         amountCents,
         date,
         competencyMonth,
-        categoryId: fe.categoryId,
+        categoryId: fixedExpense.categoryId,
         paymentMethod: "pix",
         sourceType: "fixed_expense",
-        fixedExpenseId: fe.id,
+        fixedExpenseId: fixedExpense.id,
       });
-      created.push(fe.id);
+      created.push(fixedExpense.id);
     }
 
     return { competencyMonth, createdCount: created.length, skippedCount: skipped.length, created, skipped };
@@ -123,8 +123,8 @@ export function makeRegisterVariableExpense(
     competencyMonth?: string;
   }) => {
     assertNonNegativeCents(input.amountCents, "valor");
-    const cat = await catRepo.findById(input.categoryId);
-    if (!cat) throw new NotFoundError("Category", input.categoryId);
+    const category = await catRepo.findById(input.categoryId);
+    if (!category) throw new NotFoundError("Category", input.categoryId);
     const competencyMonth = input.competencyMonth
       ? parseCompetencyMonth(input.competencyMonth)
       : competencyMonthFromDate(input.date);
@@ -154,9 +154,9 @@ export function makeGetMonthlyEntriesSummary(entriesRepo: MonthlyEntryRepository
     const entries = await entriesRepo.findByCompetencyMonth(competencyMonth);
     let variableCents = 0;
     let fixedCents = 0;
-    for (const e of entries) {
-      if (e.sourceType === "variable") variableCents += e.amountCents;
-      else fixedCents += e.amountCents;
+    for (const entry of entries) {
+      if (entry.sourceType === "variable") variableCents += entry.amountCents;
+      else fixedCents += entry.amountCents;
     }
     const totalCents = variableCents + fixedCents;
     return { competencyMonth, totalCents, variableCents, fixedCents, entryCount: entries.length };
@@ -183,8 +183,8 @@ export function makeUpdateMonthlyEntry(
     if (input.amountCents !== undefined) assertNonNegativeCents(input.amountCents, "valor");
     if (input.competencyMonth !== undefined) parseCompetencyMonth(input.competencyMonth);
     if (input.categoryId !== undefined) {
-      const cat = await catRepo.findById(input.categoryId);
-      if (!cat) throw new NotFoundError("Category", input.categoryId);
+      const category = await catRepo.findById(input.categoryId);
+      if (!category) throw new NotFoundError("Category", input.categoryId);
     }
     return entriesRepo.update(id, {
       ...input,

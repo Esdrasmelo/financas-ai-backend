@@ -9,13 +9,13 @@ import {
 
 describe("purchaseToClosingReferenceMonth", () => {
   it("fatura do mês quando compra antes do dia de fechamento", () => {
-    const d = new Date(Date.UTC(2026, 0, 5));
-    expect(purchaseToClosingReferenceMonth(d, 10)).toBe("2026-01");
+    const purchaseDate = new Date(Date.UTC(2026, 0, 5));
+    expect(purchaseToClosingReferenceMonth(purchaseDate, 10)).toBe("2026-01");
   });
 
   it("vai para o próximo fechamento quando compra após o dia de fechamento", () => {
-    const d = new Date(Date.UTC(2026, 0, 15));
-    expect(purchaseToClosingReferenceMonth(d, 10)).toBe("2026-02");
+    const purchaseDate = new Date(Date.UTC(2026, 0, 15));
+    expect(purchaseToClosingReferenceMonth(purchaseDate, 10)).toBe("2026-02");
   });
 
   it("compra no dia do fechamento vai para a próxima fatura", () => {
@@ -28,25 +28,25 @@ describe("purchaseToClosingReferenceMonth", () => {
 
 describe("resolvePurchaseTotalAndInstallmentMode", () => {
   it("parcela fixa × quantidade = total", () => {
-    const r = resolvePurchaseTotalAndInstallmentMode({
+    const resolved = resolvePurchaseTotalAndInstallmentMode({
       isInstallmentPurchase: true,
       totalInstallments: 12,
       totalAmountCents: 0,
       installmentAmountCents: 8333,
     });
-    expect(r.totalAmountCents).toBe(99996);
-    expect(r.equalInstallmentCents).toBe(8333);
+    expect(resolved.totalAmountCents).toBe(99996);
+    expect(resolved.equalInstallmentCents).toBe(8333);
   });
 
   it("à vista ignora installmentAmountCents no total", () => {
-    const r = resolvePurchaseTotalAndInstallmentMode({
+    const resolved = resolvePurchaseTotalAndInstallmentMode({
       isInstallmentPurchase: false,
       totalInstallments: 12,
       totalAmountCents: 5000,
       installmentAmountCents: 100,
     });
-    expect(r.totalAmountCents).toBe(5000);
-    expect(r.equalInstallmentCents).toBeUndefined();
+    expect(resolved.totalAmountCents).toBe(5000);
+    expect(resolved.equalInstallmentCents).toBeUndefined();
   });
 });
 
@@ -61,24 +61,24 @@ describe("dueDateForReferenceMonth", () => {
     const purchase = new Date(Date.UTC(2026, 2, 30, 12, 0, 0));
     const firstRef = purchaseToClosingReferenceMonth(purchase, 4);
     expect(firstRef).toBe("2026-04");
-    const d = dueDateForReferenceMonth(firstRef, 10, 4);
-    expect(d.getUTCFullYear()).toBe(2026);
-    expect(d.getUTCMonth()).toBe(3);
-    expect(d.getUTCDate()).toBe(10);
+    const dueDate = dueDateForReferenceMonth(firstRef, 10, 4);
+    expect(dueDate.getUTCFullYear()).toBe(2026);
+    expect(dueDate.getUTCMonth()).toBe(3);
+    expect(dueDate.getUTCDate()).toBe(10);
   });
 
   it("vencimento no mesmo mês quando dueDay >= closingDay (fecha 4, vence 10 → dia 10 do mês do fechamento)", () => {
-    const d = dueDateForReferenceMonth("2026-04", 10, 4);
-    expect(d.getUTCFullYear()).toBe(2026);
-    expect(d.getUTCMonth()).toBe(3);
-    expect(d.getUTCDate()).toBe(10);
+    const dueDate = dueDateForReferenceMonth("2026-04", 10, 4);
+    expect(dueDate.getUTCFullYear()).toBe(2026);
+    expect(dueDate.getUTCMonth()).toBe(3);
+    expect(dueDate.getUTCDate()).toBe(10);
   });
 
   it("vencimento no mês seguinte quando dueDay < closingDay", () => {
-    const d = dueDateForReferenceMonth("2026-04", 5, 25);
-    expect(d.getUTCFullYear()).toBe(2026);
-    expect(d.getUTCMonth()).toBe(4);
-    expect(d.getUTCDate()).toBe(5);
+    const dueDate = dueDateForReferenceMonth("2026-04", 5, 25);
+    expect(dueDate.getUTCFullYear()).toBe(2026);
+    expect(dueDate.getUTCMonth()).toBe(4);
+    expect(dueDate.getUTCDate()).toBe(5);
   });
 });
 

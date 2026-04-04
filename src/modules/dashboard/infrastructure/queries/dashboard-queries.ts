@@ -30,35 +30,35 @@ export function expandCompetencyMonthRange(from: string, to: string): string[] {
 }
 
 export class DashboardQueries {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   async monthlySummary(month: string, view: CompetencyView) {
-    const entries = await this.db.monthlyEntry.findMany({
+    const entries = await this.prisma.monthlyEntry.findMany({
       where: { competencyMonth: month },
     });
     let fixedCents = 0;
     let variableCents = 0;
-    for (const e of entries) {
-      if (e.sourceType === "fixed_expense") fixedCents += e.amountCents;
-      else variableCents += e.amountCents;
+    for (const entry of entries) {
+      if (entry.sourceType === "fixed_expense") fixedCents += entry.amountCents;
+      else variableCents += entry.amountCents;
     }
 
-    let cardPortionCents = 0;
+    let cardPortionCents: number;
     if (view === "payment") {
-      const inst = await this.db.purchaseInstallment.aggregate({
+      const installmentSum = await this.prisma.purchaseInstallment.aggregate({
         where: { competencyMonth: month },
         _sum: { amountCents: true },
       });
-      cardPortionCents = inst._sum.amountCents ?? 0;
+      cardPortionCents = installmentSum._sum.amountCents ?? 0;
     } else {
       const start = new Date(`${month}-01T00:00:00.000Z`);
-      const [y, m] = month.split("-").map(Number);
-      const end = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
-      const purAgg = await this.db.creditCardPurchase.aggregate({
+      const [year, monthNum] = month.split("-").map(Number);
+      const end = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
+      const purchaseSum = await this.prisma.creditCardPurchase.aggregate({
         where: { purchaseDate: { gte: start, lte: end } },
         _sum: { totalAmountCents: true },
       });
-      cardPortionCents = purAgg._sum.totalAmountCents ?? 0;
+      cardPortionCents = purchaseSum._sum.totalAmountCents ?? 0;
     }
 
     const entriesTotalCents = fixedCents + variableCents;
@@ -78,44 +78,44 @@ export class DashboardQueries {
   async expensesByCategory(month: string, view: CompetencyView) {
     const map = new Map<string, number>();
 
-    const entries = await this.db.monthlyEntry.findMany({
+    const entries = await this.prisma.monthlyEntry.findMany({
       where: { competencyMonth: month },
       include: { category: true },
     });
-    for (const e of entries) {
-      const k = e.categoryId;
-      map.set(k, (map.get(k) ?? 0) + e.amountCents);
+    for (const entry of entries) {
+      const categoryId = entry.categoryId;
+      map.set(categoryId, (map.get(categoryId) ?? 0) + entry.amountCents);
     }
 
     if (view === "payment") {
-      const rows = await this.db.purchaseInstallment.findMany({
+      const installmentRows = await this.prisma.purchaseInstallment.findMany({
         where: { competencyMonth: month },
         include: { purchase: true },
       });
-      for (const r of rows) {
-        const k = r.purchase.categoryId;
-        map.set(k, (map.get(k) ?? 0) + r.amountCents);
+      for (const row of installmentRows) {
+        const categoryId = row.purchase.categoryId;
+        map.set(categoryId, (map.get(categoryId) ?? 0) + row.amountCents);
       }
     } else {
       const start = new Date(`${month}-01T00:00:00.000Z`);
-      const [y, m] = month.split("-").map(Number);
-      const end = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
-      const purchases = await this.db.creditCardPurchase.findMany({
+      const [year, monthNum] = month.split("-").map(Number);
+      const end = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
+      const purchases = await this.prisma.creditCardPurchase.findMany({
         where: { purchaseDate: { gte: start, lte: end } },
       });
-      for (const p of purchases) {
-        map.set(p.categoryId, (map.get(p.categoryId) ?? 0) + p.totalAmountCents);
+      for (const purchase of purchases) {
+        map.set(purchase.categoryId, (map.get(purchase.categoryId) ?? 0) + purchase.totalAmountCents);
       }
     }
 
-    const categories = await this.db.category.findMany({
+    const categories = await this.prisma.category.findMany({
       where: { id: { in: [...map.keys()] } },
     });
-    const byId = new Map(categories.map((c) => [c.id, c]));
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
 
     return [...map.entries()].map(([categoryId, amountCents]) => ({
       categoryId,
-      categoryName: byId.get(categoryId)?.name ?? categoryId,
+      categoryName: categoryById.get(categoryId)?.name ?? categoryId,
       amountCents,
     }));
   }
@@ -128,7 +128,7 @@ export class DashboardQueries {
   ) {
     const months = expandCompetencyMonthRange(fromCompetencyMonth, toCompetencyMonth);
     if (view === "payment") {
-      const rows = await this.db.purchaseInstallment.groupBy({
+      const rows = await this.prisma.purchaseInstallment.groupBy({
         by: ["competencyMonth"],
         where: {
           competencyMonth: { gte: fromCompetencyMonth, lte: toCompetencyMonth },
@@ -136,10 +136,15 @@ export class DashboardQueries {
         },
         _sum: { amountCents: true },
       });
-      const map = new Map(rows.map((r) => [r.competencyMonth, r._sum.amountCents ?? 0]));
-      return months.map((m) => ({ competencyMonth: m, totalCents: map.get(m) ?? 0 }));
+      const totalsByMonth = new Map(
+        rows.map((row) => [row.competencyMonth, row._sum.amountCents ?? 0]),
+      );
+      return months.map((monthKey) => ({
+        competencyMonth: monthKey,
+        totalCents: totalsByMonth.get(monthKey) ?? 0,
+      }));
     }
-    const purchases = await this.db.creditCardPurchase.findMany({
+    const purchases = await this.prisma.creditCardPurchase.findMany({
       where: {
         creditCardId,
         purchaseDate: {
@@ -149,15 +154,21 @@ export class DashboardQueries {
       },
       select: { purchaseDate: true, totalAmountCents: true },
     });
-    const map = new Map<string, number>();
-    for (const m of months) map.set(m, 0);
-    for (const p of purchases) {
-      const ym = competencyMonthFromDate(p.purchaseDate);
-      if (ym >= fromCompetencyMonth && ym <= toCompetencyMonth) {
-        map.set(ym, (map.get(ym) ?? 0) + p.totalAmountCents);
+    const totalsByCompetencyMonth = new Map<string, number>();
+    for (const monthKey of months) totalsByCompetencyMonth.set(monthKey, 0);
+    for (const purchase of purchases) {
+      const purchaseCompetencyMonth = competencyMonthFromDate(purchase.purchaseDate);
+      if (purchaseCompetencyMonth >= fromCompetencyMonth && purchaseCompetencyMonth <= toCompetencyMonth) {
+        totalsByCompetencyMonth.set(
+          purchaseCompetencyMonth,
+          (totalsByCompetencyMonth.get(purchaseCompetencyMonth) ?? 0) + purchase.totalAmountCents,
+        );
       }
     }
-    return months.map((m) => ({ competencyMonth: m, totalCents: map.get(m) ?? 0 }));
+    return months.map((monthKey) => ({
+      competencyMonth: monthKey,
+      totalCents: totalsByCompetencyMonth.get(monthKey) ?? 0,
+    }));
   }
 
   async creditCardCategoryBreakdownInRange(
@@ -168,19 +179,19 @@ export class DashboardQueries {
   ) {
     const catTotals = new Map<string, number>();
     if (view === "payment") {
-      const rows = await this.db.purchaseInstallment.findMany({
+      const rows = await this.prisma.purchaseInstallment.findMany({
         where: {
           competencyMonth: { gte: fromCompetencyMonth, lte: toCompetencyMonth },
           statement: { creditCardId },
         },
         include: { purchase: true },
       });
-      for (const r of rows) {
-        const k = r.purchase.categoryId;
-        catTotals.set(k, (catTotals.get(k) ?? 0) + r.amountCents);
+      for (const row of rows) {
+        const categoryId = row.purchase.categoryId;
+        catTotals.set(categoryId, (catTotals.get(categoryId) ?? 0) + row.amountCents);
       }
     } else {
-      const purchases = await this.db.creditCardPurchase.findMany({
+      const purchases = await this.prisma.creditCardPurchase.findMany({
         where: {
           creditCardId,
           purchaseDate: {
@@ -189,25 +200,28 @@ export class DashboardQueries {
           },
         },
       });
-      for (const p of purchases) {
-        catTotals.set(p.categoryId, (catTotals.get(p.categoryId) ?? 0) + p.totalAmountCents);
+      for (const purchase of purchases) {
+        catTotals.set(
+          purchase.categoryId,
+          (catTotals.get(purchase.categoryId) ?? 0) + purchase.totalAmountCents,
+        );
       }
     }
-    const categories = await this.db.category.findMany({
+    const categories = await this.prisma.category.findMany({
       where: { id: { in: [...catTotals.keys()] } },
     });
-    const byId = new Map(categories.map((c) => [c.id, c]));
-    const total = [...catTotals.values()].reduce((a, b) => a + b, 0);
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
+    const total = [...catTotals.values()].reduce((sum, amount) => sum + amount, 0);
     return [...catTotals.entries()].map(([categoryId, amountCents]) => ({
       categoryId,
-      categoryName: byId.get(categoryId)?.name ?? categoryId,
+      categoryName: categoryById.get(categoryId)?.name ?? categoryId,
       amountCents,
       percentOfTotal: total > 0 ? Math.round((amountCents / total) * 10000) / 100 : 0,
     }));
   }
 
   async creditCardsOverview() {
-    const cards = await this.db.creditCard.findMany();
+    const cards = await this.prisma.creditCard.findMany();
     const out: {
       creditCardId: string;
       name: string;
@@ -218,17 +232,17 @@ export class DashboardQueries {
     }[] = [];
 
     const today = new Date();
-    for (const c of cards) {
-      const openStmts = await this.db.statement.findMany({
+    for (const card of cards) {
+      const openStmts = await this.prisma.statement.findMany({
         where: {
-          creditCardId: c.id,
+          creditCardId: card.id,
           status: { in: ["open", "closed", "overdue"] },
         },
         orderBy: { dueDate: "asc" },
       });
       let usedCents = 0;
       for (const s of openStmts) {
-        const sum = await this.db.purchaseInstallment.aggregate({
+        const sum = await this.prisma.purchaseInstallment.aggregate({
           where: { statementId: s.id, status: "pending" },
           _sum: { amountCents: true },
         });
@@ -238,7 +252,7 @@ export class DashboardQueries {
       const nextOpen = openStmts.find((s) => s.dueDate >= today && s.status !== "paid");
       let nextStatementCents: number | null = null;
       if (nextOpen) {
-        const sum = await this.db.purchaseInstallment.aggregate({
+        const sum = await this.prisma.purchaseInstallment.aggregate({
           where: { statementId: nextOpen.id, status: "pending" },
           _sum: { amountCents: true },
         });
@@ -246,12 +260,14 @@ export class DashboardQueries {
       }
 
       const utilizationPercent =
-        c.limitCents && c.limitCents > 0 ? Math.round((usedCents / c.limitCents) * 10000) / 100 : null;
+        card.limitCents && card.limitCents > 0
+          ? Math.round((usedCents / card.limitCents) * 10000) / 100
+          : null;
 
       out.push({
-        creditCardId: c.id,
-        name: c.name,
-        limitCents: c.limitCents,
+        creditCardId: card.id,
+        name: card.name,
+        limitCents: card.limitCents,
         usedCents,
         utilizationPercent,
         nextStatementCents,
@@ -262,7 +278,7 @@ export class DashboardQueries {
 
   async upcomingStatements(limit = 6) {
     const today = new Date();
-    const stmts = await this.db.statement.findMany({
+    const stmts = await this.prisma.statement.findMany({
       where: { dueDate: { gte: today }, status: { not: "paid" } },
       orderBy: { dueDate: "asc" },
       take: limit,
@@ -270,7 +286,7 @@ export class DashboardQueries {
     });
     const result = [];
     for (const s of stmts) {
-      const sum = await this.db.purchaseInstallment.aggregate({
+      const sum = await this.prisma.purchaseInstallment.aggregate({
         where: { statementId: s.id, status: "pending" },
         _sum: { amountCents: true },
       });
@@ -288,11 +304,11 @@ export class DashboardQueries {
   }
 
   async futureCommitments(fromCompetencyMonth: string) {
-    const rows = await this.db.purchaseInstallment.findMany({
+    const rows = await this.prisma.purchaseInstallment.findMany({
       where: { competencyMonth: { gte: fromCompetencyMonth }, status: "pending" },
     });
-    const totalCents = rows.reduce((a, r) => a + r.amountCents, 0);
-    const activePurchases = await this.db.creditCardPurchase.findMany({
+    const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
+    const activePurchases = await this.prisma.creditCardPurchase.findMany({
       where: { isInstallmentPurchase: true, totalInstallments: { gt: 1 } },
     });
     return {
@@ -304,13 +320,13 @@ export class DashboardQueries {
   }
 
   async openStatementsTotals() {
-    const stmts = await this.db.statement.findMany({
+    const stmts = await this.prisma.statement.findMany({
       where: { status: { in: ["open", "closed", "overdue"] } },
     });
     let totalCents = 0;
     for (const s of stmts) {
       if (s.status === "paid") continue;
-      const sum = await this.db.purchaseInstallment.aggregate({
+      const sum = await this.prisma.purchaseInstallment.aggregate({
         where: { statementId: s.id, status: "pending" },
         _sum: { amountCents: true },
       });

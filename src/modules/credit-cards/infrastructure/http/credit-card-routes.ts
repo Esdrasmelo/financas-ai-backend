@@ -54,9 +54,9 @@ function purchaseInstallmentAmountRefine(
   ctx: z.RefinementCtx,
 ) {
   if (!data.isInstallmentPurchase) return;
-  const hasPer = (data.installmentAmountCents ?? 0) > 0;
-  const hasTot = data.totalAmountCents > 0;
-  if (!hasPer && !hasTot) {
+  const hasInstallmentAmount = (data.installmentAmountCents ?? 0) > 0;
+  const hasTotalAmount = data.totalAmountCents > 0;
+  if (!hasInstallmentAmount && !hasTotalAmount) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message:
@@ -95,45 +95,55 @@ const previewSchema = z
 const purchaseUpdateSchema = purchaseFieldsSchema.superRefine(purchaseInstallmentAmountRefine);
 
 function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
-  const r = schema.safeParse(req.body);
-  if (!r.success) {
-    throw new ValidationError(r.error.flatten().formErrors.join("; "));
+  const bodyParseResult = schema.safeParse(req.body);
+  if (!bodyParseResult.success) {
+    throw new ValidationError(bodyParseResult.error.flatten().formErrors.join("; "));
   }
-  return r.data;
+  return bodyParseResult.data;
 }
 
-export function createCreditCardRouter(db: PrismaClient): Router {
-  const r = Router();
-  const cardRepo = new PrismaCreditCardRepository(db);
-  const stmtRepo = new PrismaStatementRepository(db);
-  const purRepo = new PrismaCreditCardPurchaseRepository(db);
-  const instRepo = new PrismaPurchaseInstallmentRepository(db);
-  const catRepo = new PrismaCategoryRepository(db);
+export function createCreditCardRouter(prisma: PrismaClient): Router {
+  const router = Router();
+  const creditCardRepository = new PrismaCreditCardRepository(prisma);
+  const statementRepository = new PrismaStatementRepository(prisma);
+  const purchaseRepository = new PrismaCreditCardPurchaseRepository(prisma);
+  const installmentRepository = new PrismaPurchaseInstallmentRepository(prisma);
+  const categoryRepository = new PrismaCategoryRepository(prisma);
 
-  const listCards = makeListCreditCards(cardRepo);
-  const createCard = makeCreateCreditCard(cardRepo);
-  const updateCard = makeUpdateCreditCard(cardRepo);
+  const listCards = makeListCreditCards(creditCardRepository);
+  const createCard = makeCreateCreditCard(creditCardRepository);
+  const updateCard = makeUpdateCreditCard(creditCardRepository);
   const estimate = makeEstimateStatementCycle();
-  const registerPurchase = makeRegisterCreditCardPurchase(db, cardRepo, catRepo, purRepo);
-  const updatePurchase = makeUpdateCreditCardPurchase(db, cardRepo, catRepo, purRepo);
-  const listStmtsByCard = makeListStatementsByCard(stmtRepo, cardRepo);
-  const listStmts = makeListAllStatements(stmtRepo);
-  const getStmt = makeGetStatementDetails(stmtRepo, instRepo, db);
-  const markPaid = makeMarkStatementPaid(stmtRepo);
-  const listPurchases = makeListCreditCardPurchases(purRepo);
-  const getPurchase = makeGetCreditCardPurchase(purRepo);
-  const listFutureInst = makeListFutureInstallments(instRepo);
-  const getCard = makeGetCreditCard(cardRepo);
-  const dashboardQueries = new DashboardQueries(db);
+  const registerPurchase = makeRegisterCreditCardPurchase(
+    prisma,
+    creditCardRepository,
+    categoryRepository,
+    purchaseRepository,
+  );
+  const updatePurchase = makeUpdateCreditCardPurchase(
+    prisma,
+    creditCardRepository,
+    categoryRepository,
+    purchaseRepository,
+  );
+  const listStmtsByCard = makeListStatementsByCard(statementRepository, creditCardRepository);
+  const listStmts = makeListAllStatements(statementRepository);
+  const getStmt = makeGetStatementDetails(statementRepository, installmentRepository, prisma);
+  const markPaid = makeMarkStatementPaid(statementRepository);
+  const listPurchases = makeListCreditCardPurchases(purchaseRepository);
+  const getPurchase = makeGetCreditCardPurchase(purchaseRepository);
+  const listFutureInst = makeListFutureInstallments(installmentRepository);
+  const getCard = makeGetCreditCard(creditCardRepository);
+  const dashboardQueries = new DashboardQueries(prisma);
 
-  r.get(
+  router.get(
     "/credit-cards",
     asyncHandler(async (_req, res) => {
       res.json(await listCards());
     }),
   );
 
-  r.post(
+  router.post(
     "/credit-cards",
     asyncHandler(async (req, res) => {
       const body = parseBody(cardCreateSchema, req);
@@ -142,7 +152,7 @@ export function createCreditCardRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.post(
+  router.post(
     "/credit-cards/estimate-cycle",
     asyncHandler(async (req, res) => {
       const schema = z.object({
@@ -151,20 +161,20 @@ export function createCreditCardRouter(db: PrismaClient): Router {
         installmentNumber: z.number().int().min(1).optional(),
       });
       const body = parseBody(schema, req);
-      const card = await cardRepo.findById(body.creditCardId);
-      if (!card) throw new NotFoundError("CreditCard", body.creditCardId);
+      const creditCard = await creditCardRepository.findById(body.creditCardId);
+      if (!creditCard) throw new NotFoundError("CreditCard", body.creditCardId);
       res.json(
         estimate({
           purchaseDate: new Date(body.purchaseDate),
-          closingDay: card.closingDay,
-          dueDay: card.dueDay,
+          closingDay: creditCard.closingDay,
+          dueDay: creditCard.dueDay,
           installmentNumber: body.installmentNumber,
         }),
       );
     }),
   );
 
-  r.put(
+  router.put(
     "/credit-cards/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(cardUpdateSchema, req);
@@ -172,35 +182,40 @@ export function createCreditCardRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.get(
+  router.get(
     "/credit-cards/:id/statements",
     asyncHandler(async (req, res) => {
       res.json(await listStmtsByCard(req.params.id));
     }),
   );
 
-  r.get(
+  router.get(
     "/credit-cards/:id/analytics",
     asyncHandler(async (req, res) => {
-      const q = z
+      const queryParseResult = z
         .object({
           fromCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
           toCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
           view: z.enum(["occurrence", "payment"]).optional(),
         })
         .safeParse(req.query);
-      if (!q.success) {
+      if (!queryParseResult.success) {
         throw new ValidationError("Query: fromCompetencyMonth e toCompetencyMonth (YYYY-MM); view opcional.");
       }
-      const card = await cardRepo.findById(req.params.id);
-      if (!card) throw new NotFoundError("CreditCard", req.params.id);
-      const view = q.data.view ?? "payment";
+      const creditCard = await creditCardRepository.findById(req.params.id);
+      if (!creditCard) throw new NotFoundError("CreditCard", req.params.id);
+      const view = queryParseResult.data.view ?? "payment";
       const [monthly, categories] = await Promise.all([
-        dashboardQueries.creditCardMonthlySeries(req.params.id, q.data.fromCompetencyMonth, q.data.toCompetencyMonth, view),
+        dashboardQueries.creditCardMonthlySeries(
+          req.params.id,
+          queryParseResult.data.fromCompetencyMonth,
+          queryParseResult.data.toCompetencyMonth,
+          view,
+        ),
         dashboardQueries.creditCardCategoryBreakdownInRange(
           req.params.id,
-          q.data.fromCompetencyMonth,
-          q.data.toCompetencyMonth,
+          queryParseResult.data.fromCompetencyMonth,
+          queryParseResult.data.toCompetencyMonth,
           view,
         ),
       ]);
@@ -208,22 +223,26 @@ export function createCreditCardRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.get(
+  router.get(
     "/credit-cards/:id",
     asyncHandler(async (req, res) => {
       res.json(await getCard(req.params.id));
     }),
   );
 
-  r.get(
+  router.get(
     "/credit-card-purchases",
     asyncHandler(async (req, res) => {
-      const q = z.object({ creditCardId: z.string().uuid().optional() }).safeParse(req.query);
-      res.json(await listPurchases(q.success ? q.data.creditCardId : undefined));
+      const queryParseResult = z
+        .object({ creditCardId: z.string().uuid().optional() })
+        .safeParse(req.query);
+      res.json(
+        await listPurchases(queryParseResult.success ? queryParseResult.data.creditCardId : undefined),
+      );
     }),
   );
 
-  r.post(
+  router.post(
     "/credit-card-purchases",
     asyncHandler(async (req, res) => {
       const body = parseBody(purchaseSchema, req);
@@ -235,44 +254,49 @@ export function createCreditCardRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.post(
+  router.post(
     "/credit-card-purchases/preview",
     asyncHandler(async (req, res) => {
       const body = parseBody(previewSchema, req);
-      const card = await cardRepo.findById(body.creditCardId);
-      if (!card) throw new NotFoundError("CreditCard", body.creditCardId);
-      let totalInst = body.totalInstallments;
-      let curInst = body.currentInstallment;
+      const creditCard = await creditCardRepository.findById(body.creditCardId);
+      if (!creditCard) throw new NotFoundError("CreditCard", body.creditCardId);
+      let effectiveTotalInstallments = body.totalInstallments;
+      let effectiveCurrentInstallment = body.currentInstallment;
       if (!body.isInstallmentPurchase) {
-        totalInst = 1;
-        curInst = 1;
+        effectiveTotalInstallments = 1;
+        effectiveCurrentInstallment = 1;
       }
       const resolved = resolvePurchaseTotalAndInstallmentMode({
         isInstallmentPurchase: body.isInstallmentPurchase,
-        totalInstallments: totalInst,
+        totalInstallments: effectiveTotalInstallments,
         totalAmountCents: body.totalAmountCents,
         installmentAmountCents: body.installmentAmountCents,
       });
       const amounts =
         resolved.equalInstallmentCents != null
-          ? Array.from({ length: totalInst }, () => resolved.equalInstallmentCents!)
-          : splitInstallmentCents(resolved.totalAmountCents, totalInst);
-      const firstRef = purchaseToClosingReferenceMonth(new Date(body.purchaseDate), card.closingDay);
-      const preview: { referenceMonth: string; amountCents: number; installmentNumber: number; dueDate: string }[] = [];
-      for (let i = curInst; i <= totalInst; i++) {
+          ? Array.from({ length: effectiveTotalInstallments }, () => resolved.equalInstallmentCents!)
+          : splitInstallmentCents(resolved.totalAmountCents, effectiveTotalInstallments);
+      const firstRef = purchaseToClosingReferenceMonth(new Date(body.purchaseDate), creditCard.closingDay);
+      const preview: {
+        referenceMonth: string;
+        amountCents: number;
+        installmentNumber: number;
+        dueDate: string;
+      }[] = [];
+      for (let i = effectiveCurrentInstallment; i <= effectiveTotalInstallments; i++) {
         const refMonth = installmentClosingReferenceMonth(firstRef, i);
         preview.push({
           referenceMonth: refMonth,
           amountCents: amounts[i - 1]!,
           installmentNumber: i,
-          dueDate: dueDateForReferenceMonth(refMonth, card.dueDay, card.closingDay).toISOString(),
+          dueDate: dueDateForReferenceMonth(refMonth, creditCard.dueDay, creditCard.closingDay).toISOString(),
         });
       }
       res.json({ preview });
     }),
   );
 
-  r.patch(
+  router.patch(
     "/credit-card-purchases/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(purchaseUpdateSchema, req);
@@ -284,45 +308,51 @@ export function createCreditCardRouter(db: PrismaClient): Router {
     }),
   );
 
-  r.get(
+  router.get(
     "/credit-card-purchases/:id",
     asyncHandler(async (req, res) => {
       res.json(await getPurchase(req.params.id));
     }),
   );
 
-  r.get(
+  router.get(
     "/statements",
     asyncHandler(async (req, res) => {
-      const q = z.object({ creditCardId: z.string().uuid().optional() }).safeParse(req.query);
-      res.json(await listStmts(q.success ? q.data.creditCardId : undefined));
+      const queryParseResult = z
+        .object({ creditCardId: z.string().uuid().optional() })
+        .safeParse(req.query);
+      res.json(
+        await listStmts(queryParseResult.success ? queryParseResult.data.creditCardId : undefined),
+      );
     }),
   );
 
-  r.get(
+  router.get(
     "/statements/:id",
     asyncHandler(async (req, res) => {
       res.json(await getStmt(req.params.id));
     }),
   );
 
-  r.patch(
+  router.patch(
     "/statements/:id/pay",
     asyncHandler(async (req, res) => {
       res.json(await markPaid(req.params.id));
     }),
   );
 
-  r.get(
+  router.get(
     "/installments/future",
     asyncHandler(async (req, res) => {
-      const q = z
+      const queryParseResult = z
         .object({ fromCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) })
         .safeParse(req.query);
-      if (!q.success) throw new ValidationError("query fromCompetencyMonth YYYY-MM obrigatório");
-      res.json(await listFutureInst(q.data.fromCompetencyMonth));
+      if (!queryParseResult.success) {
+        throw new ValidationError("query fromCompetencyMonth YYYY-MM obrigatório");
+      }
+      res.json(await listFutureInst(queryParseResult.data.fromCompetencyMonth));
     }),
   );
 
-  return r;
+  return router;
 }
