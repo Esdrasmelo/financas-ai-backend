@@ -24,6 +24,7 @@ export class PrismaCreditCardRepository implements CreditCardRepository {
       data: {
         name: input.name,
         brand: input.brand ?? null,
+        themeColor: input.themeColor ?? null,
         limitCents: input.limitCents ?? null,
         closingDay: input.closingDay,
         dueDay: input.dueDay,
@@ -39,6 +40,7 @@ export class PrismaCreditCardRepository implements CreditCardRepository {
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.brand !== undefined && { brand: input.brand }),
+        ...(input.themeColor !== undefined && { themeColor: input.themeColor }),
         ...(input.limitCents !== undefined && { limitCents: input.limitCents }),
         ...(input.closingDay !== undefined && { closingDay: input.closingDay }),
         ...(input.dueDay !== undefined && { dueDay: input.dueDay }),

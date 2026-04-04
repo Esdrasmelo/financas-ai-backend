@@ -151,6 +151,7 @@ export function makeCreateCreditCard(repo: CreditCardRepository) {
   return (input: {
     name: string;
     brand?: string | null;
+    themeColor?: string | null;
     limitCents?: number | null;
     closingDay: number;
     dueDay: number;
@@ -168,6 +169,7 @@ export function makeUpdateCreditCard(repo: CreditCardRepository) {
     input: {
       name?: string;
       brand?: string | null;
+      themeColor?: string | null;
       limitCents?: number | null;
       closingDay?: number;
       dueDay?: number;

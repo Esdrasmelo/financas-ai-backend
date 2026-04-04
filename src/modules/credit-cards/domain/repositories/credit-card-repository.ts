@@ -3,6 +3,7 @@ import type { CreditCard } from "../entities/credit-card.js";
 export interface CreateCreditCardInput {
   name: string;
   brand?: string | null;
+  themeColor?: string | null;
   limitCents?: number | null;
   closingDay: number;
   dueDay: number;
@@ -12,6 +13,7 @@ export interface CreateCreditCardInput {
 export interface UpdateCreditCardInput {
   name?: string;
   brand?: string | null;
+  themeColor?: string | null;
   limitCents?: number | null;
   closingDay?: number;
   dueDay?: number;

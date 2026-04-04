@@ -76,7 +76,10 @@ model MonthlyEntry {
 model CreditCard {
   id         String               @id @default(uuid())
   name       String
+  /// Bandeira de pagamento (visa, mastercard, elo, …) para exibição no app
   brand      String?
+  /// Cor do cartão na UI (#RRGGBB)
+  themeColor String?
   limitCents Int?
   closingDay Int
   dueDay     Int

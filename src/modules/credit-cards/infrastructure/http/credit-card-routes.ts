@@ -34,9 +34,16 @@ import {
   makeUpdateCreditCardPurchase,
 } from "../../application/use-cases/credit-card-use-cases.js";
 
+const cardNetworkBrandSchema = z.enum(["visa", "mastercard", "elo", "amex", "hipercard", "other"]);
+
 const cardCreateSchema = z.object({
   name: z.string().min(1),
-  brand: z.string().nullable().optional(),
+  brand: cardNetworkBrandSchema.nullable().optional(),
+  themeColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/, "themeColor deve ser #RRGGBB")
+    .nullable()
+    .optional(),
   limitCents: z.number().int().nonnegative().nullable().optional(),
   closingDay: z.number().int().min(1).max(31),
   dueDay: z.number().int().min(1).max(31),

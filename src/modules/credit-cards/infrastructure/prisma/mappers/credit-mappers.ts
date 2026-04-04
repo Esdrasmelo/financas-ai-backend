@@ -14,6 +14,7 @@ export function toCreditCardDomain(row: PCard): CreditCard {
     id: row.id,
     name: row.name,
     brand: row.brand,
+    themeColor: row.themeColor,
     limitCents: row.limitCents,
     closingDay: row.closingDay,
     dueDay: row.dueDay,

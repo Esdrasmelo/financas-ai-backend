@@ -225,6 +225,8 @@ export class DashboardQueries {
     const out: {
       creditCardId: string;
       name: string;
+      brand: string | null;
+      themeColor: string | null;
       limitCents: number | null;
       usedCents: number;
       utilizationPercent: number | null;
@@ -267,6 +269,8 @@ export class DashboardQueries {
       out.push({
         creditCardId: card.id,
         name: card.name,
+        brand: card.brand,
+        themeColor: card.themeColor,
         limitCents: card.limitCents,
         usedCents,
         utilizationPercent,
