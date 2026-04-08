@@ -420,6 +420,24 @@ export function makeUpdateCreditCardPurchase(
   };
 }
 
+export function makeDeleteCreditCardPurchase(db: PrismaClient, purRepo: CreditCardPurchaseRepository) {
+  return async (id: string) => {
+    const existing = await purRepo.findById(id);
+    if (!existing) throw new NotFoundError("CreditCardPurchase", id);
+    const installmentRows = await db.purchaseInstallment.findMany({
+      where: { purchaseId: id },
+      include: { statement: true },
+    });
+    const touchesPaid =
+      installmentRows.length > 0 &&
+      installmentRows.some((row) => row.statement.status === "paid" || row.status === "paid");
+    if (touchesPaid) {
+      throw new ValidationError("Não é possível excluir: há parcela em fatura paga.");
+    }
+    await db.creditCardPurchase.delete({ where: { id } });
+  };
+}
+
 export function makeListStatementsByCard(stmtRepo: StatementRepository, cardRepo: CreditCardRepository) {
   return async (creditCardId: string) => {
     const creditCard = await cardRepo.findById(creditCardId);
