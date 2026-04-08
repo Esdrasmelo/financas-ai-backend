@@ -32,6 +32,7 @@ import {
   makeRegisterCreditCardPurchase,
   makeUpdateCreditCard,
   makeUpdateCreditCardPurchase,
+  makeDeleteCreditCardPurchase,
 } from "../../application/use-cases/credit-card-use-cases.js";
 
 const cardNetworkBrandSchema = z.enum(["visa", "mastercard", "elo", "amex", "hipercard", "other"]);
@@ -101,10 +102,28 @@ const previewSchema = z
 
 const purchaseUpdateSchema = purchaseFieldsSchema.superRefine(purchaseInstallmentAmountRefine);
 
+function formatZodError(err: z.ZodError): string {
+  const flattened = err.flatten();
+  const fromForm = flattened.formErrors.filter(Boolean).join("; ");
+  const fromFields = Object.entries(flattened.fieldErrors)
+    .flatMap(([key, msgs]) => (msgs ?? []).map((m) => `${key}: ${m}`))
+    .join("; ");
+  return (
+    [fromForm, fromFields].filter(Boolean).join("; ") ||
+    err
+      .issues.map((issue) => {
+        const path = issue.path.filter(Boolean).join(".");
+        return path ? `${path}: ${issue.message}` : issue.message;
+      })
+      .join("; ") ||
+    "Dados inválidos"
+  );
+}
+
 function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
   const bodyParseResult = schema.safeParse(req.body);
   if (!bodyParseResult.success) {
-    throw new ValidationError(bodyParseResult.error.flatten().formErrors.join("; "));
+    throw new ValidationError(formatZodError(bodyParseResult.error));
   }
   return bodyParseResult.data;
 }
@@ -133,6 +152,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     categoryRepository,
     purchaseRepository,
   );
+  const deletePurchase = makeDeleteCreditCardPurchase(prisma, purchaseRepository);
   const listStmtsByCard = makeListStatementsByCard(statementRepository, creditCardRepository);
   const listStmts = makeListAllStatements(statementRepository);
   const getStmt = makeGetStatementDetails(statementRepository, installmentRepository, prisma);
@@ -319,6 +339,14 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     "/credit-card-purchases/:id",
     asyncHandler(async (req, res) => {
       res.json(await getPurchase(req.params.id));
+    }),
+  );
+
+  router.delete(
+    "/credit-card-purchases/:id",
+    asyncHandler(async (req, res) => {
+      await deletePurchase(req.params.id);
+      res.status(204).send();
     }),
   );
 
