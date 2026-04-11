@@ -1,6 +1,6 @@
 # Finanças AI — API
 
-API REST em **Node.js** + **Express** + **Prisma** (SQLite) para controle de despesas, cartões, faturas e planejamento mensal. Valores monetários são sempre em **centavos** (`amountCents`, `totalCents`, etc.) no JSON.
+API REST em **Node.js** + **Express** + **Prisma** (PostgreSQL) para controle de despesas, cartões, faturas e planejamento mensal. Valores monetários são sempre em **centavos** (`amountCents`, `totalCents`, etc.) no JSON.
 
 ---
 
@@ -11,7 +11,7 @@ API REST em **Node.js** + **Express** + **Prisma** (SQLite) para controle de des
 | Runtime       | Node.js ≥ 20                        |
 | HTTP          | Express 4                           |
 | Validação     | Zod                                 |
-| Persistência  | Prisma 6 + SQLite (`DATABASE_URL`) |
+| Persistência  | Prisma 6 + PostgreSQL (`DATABASE_URL`) |
 | Linguagem     | TypeScript (ESM)                    |
 
 ---
@@ -20,6 +20,7 @@ API REST em **Node.js** + **Express** + **Prisma** (SQLite) para controle de des
 
 - [pnpm](https://pnpm.io/) 9.x (recomendado) ou npm
 - Node.js ≥ 20
+- [Docker](https://www.docker.com/) (para PostgreSQL local)
 
 ---
 
@@ -31,21 +32,27 @@ API REST em **Node.js** + **Express** + **Prisma** (SQLite) para controle de des
    pnpm install
    ```
 
-2. Defina o ficheiro `.env` na raiz do backend (exemplo):
+2. Suba o PostgreSQL via Docker:
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. Defina o ficheiro `.env` na raiz do backend (exemplo):
 
    ```env
-   DATABASE_URL="file:./dev.db"
+   DATABASE_URL="postgresql://financas:financas123@localhost:5433/prisma_financas?schema=public"
    PORT=3001
    ```
 
-3. Aplicar o schema à base e gerar o cliente Prisma:
+4. Aplicar migrations e gerar o cliente Prisma:
 
    ```bash
-   pnpm db:push
+   pnpm db:migrate
    pnpm build
    ```
 
-4. Arrancar em desenvolvimento:
+5. Arrancar em desenvolvimento:
 
    ```bash
    pnpm dev
@@ -65,7 +72,8 @@ API REST em **Node.js** + **Express** + **Prisma** (SQLite) para controle de des
 | `pnpm typecheck` | TypeScript sem emitir ficheiros    |
 | `pnpm test`      | Vitest                             |
 | `pnpm lint`      | ESLint em `src/`                   |
-| `pnpm db:push`   | Sincroniza schema Prisma → SQLite  |
+| `pnpm db:migrate`| Cria/aplica migrations Prisma      |
+| `pnpm db:push`   | Sincroniza schema Prisma → PostgreSQL |
 | `pnpm db:studio` | Prisma Studio                      |
 
 ---
