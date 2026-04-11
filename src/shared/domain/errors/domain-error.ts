@@ -21,3 +21,10 @@ export class ValidationError extends DomainError {
     this.name = "ValidationError";
   }
 }
+
+export class AuthenticationError extends DomainError {
+  constructor(message = "Email ou senha inválidos") {
+    super("UNAUTHORIZED", message);
+    this.name = "AuthenticationError";
+  }
+}

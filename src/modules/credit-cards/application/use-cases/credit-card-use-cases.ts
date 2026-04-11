@@ -136,19 +136,19 @@ async function createInstallmentsForPurchaseTx(
 }
 
 export function makeListCreditCards(repo: CreditCardRepository) {
-  return () => repo.findAll();
+  return (userId: string) => repo.findAll(userId);
 }
 
 export function makeGetCreditCard(repo: CreditCardRepository) {
-  return async (id: string) => {
-    const creditCard = await repo.findById(id);
+  return async (userId: string, id: string) => {
+    const creditCard = await repo.findById(id, userId);
     if (!creditCard) throw new NotFoundError("CreditCard", id);
     return creditCard;
   };
 }
 
 export function makeCreateCreditCard(repo: CreditCardRepository) {
-  return (input: {
+  return (userId: string, input: {
     name: string;
     brand?: string | null;
     themeColor?: string | null;
@@ -159,12 +159,13 @@ export function makeCreateCreditCard(repo: CreditCardRepository) {
   }) => {
     assertDueDay(input.closingDay, "dia de fechamento");
     assertDueDay(input.dueDay, "dia de vencimento");
-    return repo.create(input);
+    return repo.create(userId, input);
   };
 }
 
 export function makeUpdateCreditCard(repo: CreditCardRepository) {
   return async (
+    userId: string,
     id: string,
     input: {
       name?: string;
@@ -176,11 +177,11 @@ export function makeUpdateCreditCard(repo: CreditCardRepository) {
       isActive?: boolean;
     },
   ) => {
-    const creditCard = await repo.findById(id);
+    const creditCard = await repo.findById(id, userId);
     if (!creditCard) throw new NotFoundError("CreditCard", id);
     if (input.closingDay !== undefined) assertDueDay(input.closingDay, "dia de fechamento");
     if (input.dueDay !== undefined) assertDueDay(input.dueDay, "dia de vencimento");
-    return repo.update(id, input);
+    return repo.update(id, userId, input);
   };
 }
 
@@ -210,7 +211,7 @@ export function makeRegisterCreditCardPurchase(
   catRepo: CategoryRepository,
   purRepo: CreditCardPurchaseRepository,
 ) {
-  return async (input: {
+  return async (userId: string, input: {
     creditCardId: string;
     categoryId: string;
     description: string;
@@ -221,9 +222,9 @@ export function makeRegisterCreditCardPurchase(
     currentInstallment: number;
     installmentAmountCents?: number | null;
   }) => {
-    const creditCard = await cardRepo.findById(input.creditCardId);
+    const creditCard = await cardRepo.findById(input.creditCardId, userId);
     if (!creditCard) throw new NotFoundError("CreditCard", input.creditCardId);
-    const category = await catRepo.findById(input.categoryId);
+    const category = await catRepo.findById(input.categoryId, userId);
     if (!category) throw new NotFoundError("Category", input.categoryId);
 
     let effectiveTotalInstallments = input.totalInstallments;
@@ -298,6 +299,7 @@ export function makeUpdateCreditCardPurchase(
   purRepo: CreditCardPurchaseRepository,
 ) {
   return async (
+    userId: string,
     id: string,
     input: {
       categoryId: string;
@@ -313,11 +315,11 @@ export function makeUpdateCreditCardPurchase(
     const existing = await purRepo.findById(id);
     if (!existing) throw new NotFoundError("CreditCardPurchase", id);
 
-    const category = await catRepo.findById(input.categoryId);
-    if (!category) throw new NotFoundError("Category", input.categoryId);
-
-    const creditCard = await cardRepo.findById(existing.creditCardId);
+    const creditCard = await cardRepo.findById(existing.creditCardId, userId);
     if (!creditCard) throw new NotFoundError("CreditCard", existing.creditCardId);
+
+    const category = await catRepo.findById(input.categoryId, userId);
+    if (!category) throw new NotFoundError("Category", input.categoryId);
 
     let effectiveTotalInstallments = input.totalInstallments;
     let effectiveCurrentInstallment = input.currentInstallment;
@@ -439,8 +441,8 @@ export function makeDeleteCreditCardPurchase(db: PrismaClient, purRepo: CreditCa
 }
 
 export function makeListStatementsByCard(stmtRepo: StatementRepository, cardRepo: CreditCardRepository) {
-  return async (creditCardId: string) => {
-    const creditCard = await cardRepo.findById(creditCardId);
+  return async (userId: string, creditCardId: string) => {
+    const creditCard = await cardRepo.findById(creditCardId, userId);
     if (!creditCard) throw new NotFoundError("CreditCard", creditCardId);
     return stmtRepo.findByCreditCardId(creditCardId);
   };

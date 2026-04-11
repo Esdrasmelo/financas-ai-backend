@@ -23,9 +23,9 @@ export interface UpdateFixedExpenseInput {
 }
 
 export interface FixedExpenseRepository {
-  findAll(): Promise<FixedExpense[]>;
-  findById(id: string): Promise<FixedExpense | null>;
-  findActiveRecurring(): Promise<FixedExpense[]>;
-  create(input: CreateFixedExpenseInput): Promise<FixedExpense>;
-  update(id: string, input: UpdateFixedExpenseInput): Promise<FixedExpense>;
+  findAll(userId: string): Promise<FixedExpense[]>;
+  findById(id: string, userId: string): Promise<FixedExpense | null>;
+  findActiveRecurring(userId: string): Promise<FixedExpense[]>;
+  create(userId: string, input: CreateFixedExpenseInput): Promise<FixedExpense>;
+  update(id: string, userId: string, input: UpdateFixedExpenseInput): Promise<FixedExpense>;
 }

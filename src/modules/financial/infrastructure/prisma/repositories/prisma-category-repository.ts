@@ -5,19 +5,20 @@ import { toCategoryDomain } from "../mappers/financial-mappers.js";
 export class PrismaCategoryRepository implements CategoryRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async findAll() {
-    const rows = await this.db.category.findMany({ orderBy: { name: "asc" } });
+  async findAll(userId: string) {
+    const rows = await this.db.category.findMany({ where: { userId }, orderBy: { name: "asc" } });
     return rows.map(toCategoryDomain);
   }
 
-  async findById(id: string) {
-    const row = await this.db.category.findUnique({ where: { id } });
+  async findById(id: string, userId: string) {
+    const row = await this.db.category.findFirst({ where: { id, userId } });
     return row ? toCategoryDomain(row) : null;
   }
 
-  async create(input: CreateCategoryInput) {
+  async create(userId: string, input: CreateCategoryInput) {
     const row = await this.db.category.create({
       data: {
+        userId,
         name: input.name,
         type: input.type ?? "expense",
         color: input.color ?? null,
@@ -27,7 +28,7 @@ export class PrismaCategoryRepository implements CategoryRepository {
     return toCategoryDomain(row);
   }
 
-  async update(id: string, input: UpdateCategoryInput) {
+  async update(id: string, userId: string, input: UpdateCategoryInput) {
     const row = await this.db.category.update({
       where: { id },
       data: {
@@ -40,7 +41,7 @@ export class PrismaCategoryRepository implements CategoryRepository {
     return toCategoryDomain(row);
   }
 
-  async delete(id: string) {
+  async delete(id: string, _userId: string) {
     await this.db.category.delete({ where: { id } });
   }
 }

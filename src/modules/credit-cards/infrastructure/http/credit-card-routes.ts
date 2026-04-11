@@ -165,8 +165,8 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
 
   router.get(
     "/credit-cards",
-    asyncHandler(async (_req, res) => {
-      res.json(await listCards());
+    asyncHandler(async (req, res) => {
+      res.json(await listCards(req.userId));
     }),
   );
 
@@ -174,7 +174,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     "/credit-cards",
     asyncHandler(async (req, res) => {
       const body = parseBody(cardCreateSchema, req);
-      const data = await createCard(body);
+      const data = await createCard(req.userId, body);
       res.status(201).json(data);
     }),
   );
@@ -188,7 +188,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
         installmentNumber: z.number().int().min(1).optional(),
       });
       const body = parseBody(schema, req);
-      const creditCard = await creditCardRepository.findById(body.creditCardId);
+      const creditCard = await creditCardRepository.findById(body.creditCardId, req.userId);
       if (!creditCard) throw new NotFoundError("CreditCard", body.creditCardId);
       res.json(
         estimate({
@@ -205,14 +205,14 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     "/credit-cards/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(cardUpdateSchema, req);
-      res.json(await updateCard(req.params.id, body));
+      res.json(await updateCard(req.userId, req.params.id, body));
     }),
   );
 
   router.get(
     "/credit-cards/:id/statements",
     asyncHandler(async (req, res) => {
-      res.json(await listStmtsByCard(req.params.id));
+      res.json(await listStmtsByCard(req.userId, req.params.id));
     }),
   );
 
@@ -229,7 +229,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
       if (!queryParseResult.success) {
         throw new ValidationError("Query: fromCompetencyMonth e toCompetencyMonth (YYYY-MM); view opcional.");
       }
-      const creditCard = await creditCardRepository.findById(req.params.id);
+      const creditCard = await creditCardRepository.findById(req.params.id, req.userId);
       if (!creditCard) throw new NotFoundError("CreditCard", req.params.id);
       const view = queryParseResult.data.view ?? "payment";
       const [monthly, categories] = await Promise.all([
@@ -253,7 +253,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
   router.get(
     "/credit-cards/:id",
     asyncHandler(async (req, res) => {
-      res.json(await getCard(req.params.id));
+      res.json(await getCard(req.userId, req.params.id));
     }),
   );
 
@@ -273,7 +273,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     "/credit-card-purchases",
     asyncHandler(async (req, res) => {
       const body = parseBody(purchaseSchema, req);
-      const data = await registerPurchase({
+      const data = await registerPurchase(req.userId, {
         ...body,
         purchaseDate: new Date(body.purchaseDate),
       });
@@ -285,7 +285,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     "/credit-card-purchases/preview",
     asyncHandler(async (req, res) => {
       const body = parseBody(previewSchema, req);
-      const creditCard = await creditCardRepository.findById(body.creditCardId);
+      const creditCard = await creditCardRepository.findById(body.creditCardId, req.userId);
       if (!creditCard) throw new NotFoundError("CreditCard", body.creditCardId);
       let effectiveTotalInstallments = body.totalInstallments;
       let effectiveCurrentInstallment = body.currentInstallment;
@@ -327,7 +327,7 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
     "/credit-card-purchases/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(purchaseUpdateSchema, req);
-      const data = await updatePurchase(req.params.id, {
+      const data = await updatePurchase(req.userId, req.params.id, {
         ...body,
         purchaseDate: new Date(body.purchaseDate),
       });

@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { DomainError, NotFoundError, ValidationError } from "../../domain/errors/domain-error.js";
+import { AuthenticationError, DomainError, NotFoundError, ValidationError } from "../../domain/errors/domain-error.js";
 
 export function errorHandler(
   err: unknown,
@@ -7,6 +7,10 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if (err instanceof AuthenticationError) {
+    res.status(401).json({ error: err.code, message: err.message });
+    return;
+  }
   if (err instanceof NotFoundError) {
     res.status(404).json({ error: err.code, message: err.message });
     return;
@@ -20,7 +24,7 @@ export function errorHandler(
     return;
   }
   console.error(err);
-  res.status(500).json({ error: "INTERNAL", message: "Erro interno" });
+  res.status(500).json({ error: "INTERNAL", message: "Erro interno do servidor. Tente novamente mais tarde." });
 }
 
 export function asyncHandler(

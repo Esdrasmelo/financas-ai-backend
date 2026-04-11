@@ -9,22 +9,23 @@ import { toMonthlyEntryDomain } from "../mappers/financial-mappers.js";
 export class PrismaMonthlyEntryRepository implements MonthlyEntryRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async findById(id: string) {
-    const row = await this.db.monthlyEntry.findUnique({ where: { id } });
+  async findById(id: string, userId: string) {
+    const row = await this.db.monthlyEntry.findFirst({ where: { id, userId } });
     return row ? toMonthlyEntryDomain(row) : null;
   }
 
-  async findByCompetencyMonth(month: string) {
+  async findByCompetencyMonth(userId: string, month: string) {
     const rows = await this.db.monthlyEntry.findMany({
-      where: { competencyMonth: month },
+      where: { userId, competencyMonth: month },
       orderBy: { date: "desc" },
     });
     return rows.map(toMonthlyEntryDomain);
   }
 
-  async findFixedExpenseEntryForMonth(fixedExpenseId: string, competencyMonth: string) {
+  async findFixedExpenseEntryForMonth(userId: string, fixedExpenseId: string, competencyMonth: string) {
     const row = await this.db.monthlyEntry.findFirst({
       where: {
+        userId,
         fixedExpenseId,
         competencyMonth,
         sourceType: "fixed_expense",
@@ -33,16 +34,17 @@ export class PrismaMonthlyEntryRepository implements MonthlyEntryRepository {
     return row ? toMonthlyEntryDomain(row) : null;
   }
 
-  async existsForFixedExpenseAndMonth(fixedExpenseId: string, competencyMonth: string) {
+  async existsForFixedExpenseAndMonth(userId: string, fixedExpenseId: string, competencyMonth: string) {
     const count = await this.db.monthlyEntry.count({
-      where: { fixedExpenseId, competencyMonth },
+      where: { userId, fixedExpenseId, competencyMonth },
     });
     return count > 0;
   }
 
-  async create(input: CreateMonthlyEntryInput) {
+  async create(userId: string, input: CreateMonthlyEntryInput) {
     const row = await this.db.monthlyEntry.create({
       data: {
+        userId,
         description: input.description,
         amountCents: input.amountCents,
         date: input.date,
@@ -56,7 +58,7 @@ export class PrismaMonthlyEntryRepository implements MonthlyEntryRepository {
     return toMonthlyEntryDomain(row);
   }
 
-  async update(id: string, input: UpdateMonthlyEntryInput) {
+  async update(id: string, _userId: string, input: UpdateMonthlyEntryInput) {
     const row = await this.db.monthlyEntry.update({
       where: { id },
       data: {
@@ -71,13 +73,13 @@ export class PrismaMonthlyEntryRepository implements MonthlyEntryRepository {
     return toMonthlyEntryDomain(row);
   }
 
-  async delete(id: string) {
+  async delete(id: string, _userId: string) {
     await this.db.monthlyEntry.delete({ where: { id } });
   }
 
-  async sumByCompetencyMonth(month: string) {
+  async sumByCompetencyMonth(userId: string, month: string) {
     const agg = await this.db.monthlyEntry.aggregate({
-      where: { competencyMonth: month },
+      where: { userId, competencyMonth: month },
       _sum: { amountCents: true },
     });
     return agg._sum.amountCents ?? 0;

@@ -9,26 +9,27 @@ import { toFixedExpenseDomain } from "../mappers/financial-mappers.js";
 export class PrismaFixedExpenseRepository implements FixedExpenseRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async findAll() {
-    const rows = await this.db.fixedExpense.findMany({ orderBy: { name: "asc" } });
+  async findAll(userId: string) {
+    const rows = await this.db.fixedExpense.findMany({ where: { userId }, orderBy: { name: "asc" } });
     return rows.map(toFixedExpenseDomain);
   }
 
-  async findById(id: string) {
-    const row = await this.db.fixedExpense.findUnique({ where: { id } });
+  async findById(id: string, userId: string) {
+    const row = await this.db.fixedExpense.findFirst({ where: { id, userId } });
     return row ? toFixedExpenseDomain(row) : null;
   }
 
-  async findActiveRecurring() {
+  async findActiveRecurring(userId: string) {
     const rows = await this.db.fixedExpense.findMany({
-      where: { isActive: true, isRecurringMonthly: true },
+      where: { userId, isActive: true, isRecurringMonthly: true },
     });
     return rows.map(toFixedExpenseDomain);
   }
 
-  async create(input: CreateFixedExpenseInput) {
+  async create(userId: string, input: CreateFixedExpenseInput) {
     const row = await this.db.fixedExpense.create({
       data: {
+        userId,
         name: input.name,
         description: input.description ?? null,
         amountCents: input.amountCents,
@@ -42,7 +43,7 @@ export class PrismaFixedExpenseRepository implements FixedExpenseRepository {
     return toFixedExpenseDomain(row);
   }
 
-  async update(id: string, input: UpdateFixedExpenseInput) {
+  async update(id: string, _userId: string, input: UpdateFixedExpenseInput) {
     const row = await this.db.fixedExpense.update({
       where: { id },
       data: {
