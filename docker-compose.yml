@@ -1,0 +1,17 @@
+name: prisma-financas
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: prisma-financas-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: financas
+      POSTGRES_PASSWORD: financas123
+      POSTGRES_DB: prisma_financas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
