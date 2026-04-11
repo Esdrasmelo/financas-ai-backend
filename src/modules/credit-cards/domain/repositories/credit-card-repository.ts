@@ -21,8 +21,8 @@ export interface UpdateCreditCardInput {
 }
 
 export interface CreditCardRepository {
-  findAll(): Promise<CreditCard[]>;
-  findById(id: string): Promise<CreditCard | null>;
-  create(input: CreateCreditCardInput): Promise<CreditCard>;
-  update(id: string, input: UpdateCreditCardInput): Promise<CreditCard>;
+  findAll(userId: string): Promise<CreditCard[]>;
+  findById(id: string, userId: string): Promise<CreditCard | null>;
+  create(userId: string, input: CreateCreditCardInput): Promise<CreditCard>;
+  update(id: string, userId: string, input: UpdateCreditCardInput): Promise<CreditCard>;
 }

@@ -104,9 +104,8 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
 
   router.get(
     "/categories",
-    asyncHandler(async (_req, res) => {
-      const data = await listCategories();
-      res.json(data);
+    asyncHandler(async (req, res) => {
+      res.json(await listCategories(req.userId));
     }),
   );
 
@@ -114,7 +113,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     "/categories",
     asyncHandler(async (req, res) => {
       const body = parseBody(categoryCreateSchema, req);
-      const data = await createCategory(body);
+      const data = await createCategory(req.userId, body);
       res.status(201).json(data);
     }),
   );
@@ -123,7 +122,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     "/categories/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(categoryUpdateSchema, req);
-      const data = await updateCategory(req.params.id, body);
+      const data = await updateCategory(req.userId, req.params.id, body);
       res.json(data);
     }),
   );
@@ -131,15 +130,15 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
   router.delete(
     "/categories/:id",
     asyncHandler(async (req, res) => {
-      await deleteCategory(req.params.id);
+      await deleteCategory(req.userId, req.params.id);
       res.status(204).send();
     }),
   );
 
   router.get(
     "/fixed-expenses",
-    asyncHandler(async (_req, res) => {
-      res.json(await listFixed());
+    asyncHandler(async (req, res) => {
+      res.json(await listFixed(req.userId));
     }),
   );
 
@@ -147,7 +146,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     "/fixed-expenses",
     asyncHandler(async (req, res) => {
       const body = parseBody(fixedExpenseCreateSchema, req);
-      const data = await createFixed(body);
+      const data = await createFixed(req.userId, body);
       res.status(201).json(data);
     }),
   );
@@ -156,7 +155,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     "/fixed-expenses/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(fixedExpenseUpdateSchema, req);
-      const data = await updateFixed(req.params.id, body);
+      const data = await updateFixed(req.userId, req.params.id, body);
       res.json(data);
     }),
   );
@@ -164,7 +163,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
   router.patch(
     "/fixed-expenses/:id/disable",
     asyncHandler(async (req, res) => {
-      const data = await disableFixed(req.params.id);
+      const data = await disableFixed(req.userId, req.params.id);
       res.json(data);
     }),
   );
@@ -174,7 +173,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     asyncHandler(async (req, res) => {
       const schema = z.object({ competencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
       const body = parseBody(schema, req);
-      const data = await genMonthly(body.competencyMonth);
+      const data = await genMonthly(req.userId, body.competencyMonth);
       res.json(data);
     }),
   );
@@ -188,7 +187,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
       if (!queryParseResult.success) {
         throw new ValidationError("query competencyMonth YYYY-MM obrigatório");
       }
-      res.json(await listEntries(queryParseResult.data.competencyMonth));
+      res.json(await listEntries(req.userId, queryParseResult.data.competencyMonth));
     }),
   );
 
@@ -201,7 +200,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
       if (!queryParseResult.success) {
         throw new ValidationError("query competencyMonth YYYY-MM obrigatório");
       }
-      res.json(await summaryEntries(queryParseResult.data.competencyMonth));
+      res.json(await summaryEntries(req.userId, queryParseResult.data.competencyMonth));
     }),
   );
 
@@ -209,7 +208,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     "/entries",
     asyncHandler(async (req, res) => {
       const body = parseBody(entryCreateSchema, req);
-      const data = await registerVar({
+      const data = await registerVar(req.userId, {
         ...body,
         date: new Date(body.date),
       });
@@ -221,7 +220,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
     "/entries/:id",
     asyncHandler(async (req, res) => {
       const body = parseBody(entryUpdateSchema, req);
-      const data = await updateEntry(req.params.id, {
+      const data = await updateEntry(req.userId, req.params.id, {
         ...body,
         date: body.date ? new Date(body.date) : undefined,
       });
@@ -232,7 +231,7 @@ export function createFinancialRouter(prisma: PrismaClient): Router {
   router.delete(
     "/entries/:id",
     asyncHandler(async (req, res) => {
-      await deleteEntry(req.params.id);
+      await deleteEntry(req.userId, req.params.id);
       res.status(204).send();
     }),
   );

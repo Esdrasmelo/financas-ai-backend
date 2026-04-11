@@ -9,19 +9,20 @@ import { toCreditCardDomain } from "../mappers/credit-mappers.js";
 export class PrismaCreditCardRepository implements CreditCardRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async findAll() {
-    const rows = await this.db.creditCard.findMany({ orderBy: { name: "asc" } });
+  async findAll(userId: string) {
+    const rows = await this.db.creditCard.findMany({ where: { userId }, orderBy: { name: "asc" } });
     return rows.map(toCreditCardDomain);
   }
 
-  async findById(id: string) {
-    const row = await this.db.creditCard.findUnique({ where: { id } });
+  async findById(id: string, userId: string) {
+    const row = await this.db.creditCard.findFirst({ where: { id, userId } });
     return row ? toCreditCardDomain(row) : null;
   }
 
-  async create(input: CreateCreditCardInput) {
+  async create(userId: string, input: CreateCreditCardInput) {
     const row = await this.db.creditCard.create({
       data: {
+        userId,
         name: input.name,
         brand: input.brand ?? null,
         themeColor: input.themeColor ?? null,
@@ -34,7 +35,7 @@ export class PrismaCreditCardRepository implements CreditCardRepository {
     return toCreditCardDomain(row);
   }
 
-  async update(id: string, input: UpdateCreditCardInput) {
+  async update(id: string, _userId: string, input: UpdateCreditCardInput) {
     const row = await this.db.creditCard.update({
       where: { id },
       data: {
