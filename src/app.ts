@@ -9,6 +9,7 @@ import { createBudgetRouter } from "./modules/budget/infrastructure/http/budget-
 import { createAiRouter } from "./modules/ai/infrastructure/http/ai-routes.js";
 import { authMiddleware } from "./shared/infrastructure/http/auth-middleware.js";
 import { errorHandler } from "./shared/infrastructure/http/error-handler.js";
+import { requestLogger } from "./shared/infrastructure/http/request-logger.js";
 
 export function createApp(prisma: PrismaClient): Express {
   const app = express();
@@ -19,6 +20,7 @@ export function createApp(prisma: PrismaClient): Express {
     }),
   );
   app.use(express.json());
+  app.use(requestLogger);
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "prisma-financas-backend" });
