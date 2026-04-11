@@ -22,9 +22,10 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# Prisma / SQLite local
+# Prisma / dados locais
 prisma/*.db
 prisma/*.db-journal
+prisma/sqlite-export.json
 
 # Test / coverage
 coverage/
