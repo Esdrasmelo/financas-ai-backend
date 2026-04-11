@@ -29,7 +29,7 @@ export function createDashboardRouter(prisma: PrismaClient): Router {
     "/dashboard/kpis",
     asyncHandler(async (req, res) => {
       const { competencyMonth, view } = parseMonthQuery(req);
-      res.json(await dashboardQueries.kpis(competencyMonth, view));
+      res.json(await dashboardQueries.kpis(req.userId, competencyMonth, view));
     }),
   );
 
@@ -37,7 +37,7 @@ export function createDashboardRouter(prisma: PrismaClient): Router {
     "/dashboard/monthly-summary",
     asyncHandler(async (req, res) => {
       const { competencyMonth, view } = parseMonthQuery(req);
-      res.json(await dashboardQueries.monthlySummary(competencyMonth, view));
+      res.json(await dashboardQueries.monthlySummary(req.userId, competencyMonth, view));
     }),
   );
 
@@ -45,14 +45,14 @@ export function createDashboardRouter(prisma: PrismaClient): Router {
     "/dashboard/category-breakdown",
     asyncHandler(async (req, res) => {
       const { competencyMonth, view } = parseMonthQuery(req);
-      res.json(await dashboardQueries.expensesByCategory(competencyMonth, view));
+      res.json(await dashboardQueries.expensesByCategory(req.userId, competencyMonth, view));
     }),
   );
 
   router.get(
     "/dashboard/credit-cards-overview",
-    asyncHandler(async (_req, res) => {
-      res.json(await dashboardQueries.creditCardsOverview());
+    asyncHandler(async (req, res) => {
+      res.json(await dashboardQueries.creditCardsOverview(req.userId));
     }),
   );
 
@@ -66,7 +66,7 @@ export function createDashboardRouter(prisma: PrismaClient): Router {
       if (!queryParseResult.success) {
         throw new ValidationError("query fromCompetencyMonth YYYY-MM obrigatório");
       }
-      res.json(await dashboardQueries.futureCommitments(queryParseResult.data.fromCompetencyMonth));
+      res.json(await dashboardQueries.futureCommitments(req.userId, queryParseResult.data.fromCompetencyMonth));
     }),
   );
 
@@ -81,7 +81,7 @@ export function createDashboardRouter(prisma: PrismaClient): Router {
         throw new ValidationError("query limit opcional, inteiro entre 1 e 24");
       }
       const limit = queryParseResult.data.limit ?? 6;
-      res.json(await dashboardQueries.upcomingStatements(limit));
+      res.json(await dashboardQueries.upcomingStatements(req.userId, limit));
     }),
   );
 

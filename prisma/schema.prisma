@@ -7,6 +7,66 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  themeMode     String   @default("light")
+  themePrimary  String   @default("#1f4b46")
+  themeAccent   String   @default("#dceae7")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  categories           Category[]
+  fixedExpenses        FixedExpense[]
+  monthlyEntries       MonthlyEntry[]
+  creditCards          CreditCard[]
+  monthlyIncomePlans   MonthlyIncomePlan[]
+  incomeReceipts       IncomeReceipt[]
+  savingsDeposits      SavingsDeposit[]
+  passwordResetTokens  PasswordResetToken[]
+  loginHistory         LoginHistory[]
+  aiConversations      AiConversation[]
+}
+
+model LoginHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  success     Boolean  @default(true)
+  ip          String?
+  userAgent   String?
+  browser     String?
+  os          String?
+  device      String?
+  city        String?
+  region      String?
+  country     String?
+  countryCode String?
+  latitude    Float?
+  longitude   Float?
+  isp         String?
+  timezone    String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([token])
+  @@index([userId])
+}
+
 enum CategoryType {
   expense
   income
@@ -14,19 +74,24 @@ enum CategoryType {
 
 model Category {
   id                  String               @id @default(uuid())
+  userId              String
   name                String
   type                CategoryType         @default(expense)
   color               String?
   icon                String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  user                User                 @relation(fields: [userId], references: [id])
   fixedExpenses       FixedExpense[]
   monthlyEntries      MonthlyEntry[]
   creditCardPurchases CreditCardPurchase[]
+
+  @@index([userId])
 }
 
 model FixedExpense {
   id                 String         @id @default(uuid())
+  userId             String
   name               String
   description        String?
   /// Valor fixo mensal, ou valor de referência / última média quando isVariableAmount
@@ -37,10 +102,13 @@ model FixedExpense {
   dueDay             Int
   isActive           Boolean        @default(true)
   isRecurringMonthly Boolean        @default(true)
+  user               User           @relation(fields: [userId], references: [id])
   category           Category       @relation(fields: [categoryId], references: [id])
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   monthlyEntries     MonthlyEntry[]
+
+  @@index([userId])
 }
 
 enum PaymentMethod {
@@ -57,6 +125,7 @@ enum MonthlyEntrySourceType {
 
 model MonthlyEntry {
   id              String                   @id @default(uuid())
+  userId          String
   description     String
   amountCents     Int
   date            DateTime
@@ -65,16 +134,19 @@ model MonthlyEntry {
   paymentMethod   PaymentMethod
   sourceType      MonthlyEntrySourceType
   fixedExpenseId  String?
+  user            User                     @relation(fields: [userId], references: [id])
   category        Category                 @relation(fields: [categoryId], references: [id])
   fixedExpense    FixedExpense?            @relation(fields: [fixedExpenseId], references: [id])
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 
+  @@index([userId])
   @@index([competencyMonth])
 }
 
 model CreditCard {
   id         String               @id @default(uuid())
+  userId     String
   name       String
   /// Bandeira de pagamento (visa, mastercard, elo, …) para exibição no app
   brand      String?
@@ -84,10 +156,13 @@ model CreditCard {
   closingDay Int
   dueDay     Int
   isActive   Boolean              @default(true)
+  user       User                 @relation(fields: [userId], references: [id])
   createdAt  DateTime             @default(now())
   updatedAt  DateTime             @updatedAt
   statements Statement[]
   purchases  CreditCardPurchase[]
+
+  @@index([userId])
 }
 
 enum StatementStatus {
@@ -162,32 +237,66 @@ model PurchaseInstallment {
 /// Salário (ou renda) informado manualmente por mês de competência
 model MonthlyIncomePlan {
   id                String   @id @default(uuid())
-  competencyMonth   String   @unique
+  userId            String
+  competencyMonth   String
   salaryCents       Int?
+  user              User     @relation(fields: [userId], references: [id])
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@unique([userId, competencyMonth])
 }
 
 /// Outras rendas recebidas no mês (além do campo salário em MonthlyIncomePlan)
 model IncomeReceipt {
   id                String   @id @default(uuid())
+  userId            String
   competencyMonth   String
   amountCents       Int
   note              String?
+  user              User     @relation(fields: [userId], references: [id])
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  @@index([userId])
   @@index([competencyMonth])
 }
 
 /// Valores guardados / poupança registrados por mês
 model SavingsDeposit {
   id                String   @id @default(uuid())
+  userId            String
   competencyMonth   String
   amountCents       Int
   note              String?
+  user              User     @relation(fields: [userId], references: [id])
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  @@index([userId])
   @@index([competencyMonth])
+}
+
+model AiConversation {
+  id        String      @id @default(uuid())
+  userId    String
+  title     String?
+  user      User        @relation(fields: [userId], references: [id])
+  messages  AiMessage[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+model AiMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  role           String
+  content        String
+  model          String?
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId])
 }

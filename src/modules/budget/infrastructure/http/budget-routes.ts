@@ -16,6 +16,11 @@ function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
   return bodyParseResult.data;
 }
 
+function omitUserId<T extends { userId?: unknown }>(row: T): Omit<T, "userId"> {
+  const { userId: _, ...rest } = row;
+  return rest;
+}
+
 export function createBudgetRouter(prisma: PrismaClient): Router {
   const router = Router();
   const dashboardQueries = new DashboardQueries(prisma);
@@ -29,16 +34,18 @@ export function createBudgetRouter(prisma: PrismaClient): Router {
       const view: CompetencyView = viewQuery.success && viewQuery.data ? viewQuery.data : "payment";
 
       const [plan, savings, incomeReceipts, summary] = await Promise.all([
-        prisma.monthlyIncomePlan.findUnique({ where: { competencyMonth: competencyMonthParse.data } }),
+        prisma.monthlyIncomePlan.findFirst({
+          where: { userId: req.userId, competencyMonth: competencyMonthParse.data },
+        }),
         prisma.savingsDeposit.findMany({
-          where: { competencyMonth: competencyMonthParse.data },
+          where: { userId: req.userId, competencyMonth: competencyMonthParse.data },
           orderBy: { createdAt: "desc" },
         }),
         prisma.incomeReceipt.findMany({
-          where: { competencyMonth: competencyMonthParse.data },
+          where: { userId: req.userId, competencyMonth: competencyMonthParse.data },
           orderBy: { createdAt: "desc" },
         }),
-        dashboardQueries.monthlySummary(competencyMonthParse.data, view),
+        dashboardQueries.monthlySummary(req.userId, competencyMonthParse.data, view),
       ]);
 
       const salaryCents = plan?.salaryCents ?? null;
@@ -56,11 +63,11 @@ export function createBudgetRouter(prisma: PrismaClient): Router {
         competencyMonth: competencyMonthParse.data,
         view,
         salaryCents,
-        incomeReceipts,
+        incomeReceipts: incomeReceipts.map(omitUserId),
         incomeReceiptsTotalCents,
         totalReceivedCents,
         hasIncomeConfigured,
-        savingsDeposits: savings,
+        savingsDeposits: savings.map(omitUserId),
         savingsTotalCents,
         monthlySummary: summary,
         surplusCents,
@@ -80,11 +87,20 @@ export function createBudgetRouter(prisma: PrismaClient): Router {
         req,
       );
       const row = await prisma.monthlyIncomePlan.upsert({
-        where: { competencyMonth: competencyMonthParse.data },
-        create: { competencyMonth: competencyMonthParse.data, salaryCents: body.salaryCents },
+        where: {
+          userId_competencyMonth: {
+            userId: req.userId,
+            competencyMonth: competencyMonthParse.data,
+          },
+        },
+        create: {
+          userId: req.userId,
+          competencyMonth: competencyMonthParse.data,
+          salaryCents: body.salaryCents,
+        },
         update: { salaryCents: body.salaryCents },
       });
-      res.json(row);
+      res.json(omitUserId(row));
     }),
   );
 
@@ -101,19 +117,22 @@ export function createBudgetRouter(prisma: PrismaClient): Router {
       );
       const row = await prisma.incomeReceipt.create({
         data: {
+          userId: req.userId,
           competencyMonth: body.competencyMonth,
           amountCents: body.amountCents,
           note: body.note ?? null,
         },
       });
-      res.status(201).json(row);
+      res.status(201).json(omitUserId(row));
     }),
   );
 
   router.delete(
     "/budget/income-receipts/:id",
     asyncHandler(async (req, res) => {
-      const deleteResult = await prisma.incomeReceipt.deleteMany({ where: { id: req.params.id } });
+      const deleteResult = await prisma.incomeReceipt.deleteMany({
+        where: { id: req.params.id, userId: req.userId },
+      });
       if (deleteResult.count === 0) throw new NotFoundError("IncomeReceipt", req.params.id);
       res.status(204).send();
     }),
@@ -132,19 +151,22 @@ export function createBudgetRouter(prisma: PrismaClient): Router {
       );
       const row = await prisma.savingsDeposit.create({
         data: {
+          userId: req.userId,
           competencyMonth: body.competencyMonth,
           amountCents: body.amountCents,
           note: body.note ?? null,
         },
       });
-      res.status(201).json(row);
+      res.status(201).json(omitUserId(row));
     }),
   );
 
   router.delete(
     "/budget/savings/:id",
     asyncHandler(async (req, res) => {
-      const deleteResult = await prisma.savingsDeposit.deleteMany({ where: { id: req.params.id } });
+      const deleteResult = await prisma.savingsDeposit.deleteMany({
+        where: { id: req.params.id, userId: req.userId },
+      });
       if (deleteResult.count === 0) throw new NotFoundError("SavingsDeposit", req.params.id);
       res.status(204).send();
     }),

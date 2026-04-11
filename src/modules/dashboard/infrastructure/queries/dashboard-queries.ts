@@ -32,9 +32,9 @@ export function expandCompetencyMonthRange(from: string, to: string): string[] {
 export class DashboardQueries {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async monthlySummary(month: string, view: CompetencyView) {
+  async monthlySummary(userId: string, month: string, view: CompetencyView) {
     const entries = await this.prisma.monthlyEntry.findMany({
-      where: { competencyMonth: month },
+      where: { userId, competencyMonth: month },
     });
     let fixedCents = 0;
     let variableCents = 0;
@@ -46,7 +46,10 @@ export class DashboardQueries {
     let cardPortionCents: number;
     if (view === "payment") {
       const installmentSum = await this.prisma.purchaseInstallment.aggregate({
-        where: { competencyMonth: month },
+        where: {
+          competencyMonth: month,
+          statement: { creditCard: { userId } },
+        },
         _sum: { amountCents: true },
       });
       cardPortionCents = installmentSum._sum.amountCents ?? 0;
@@ -55,7 +58,10 @@ export class DashboardQueries {
       const [year, monthNum] = month.split("-").map(Number);
       const end = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
       const purchaseSum = await this.prisma.creditCardPurchase.aggregate({
-        where: { purchaseDate: { gte: start, lte: end } },
+        where: {
+          purchaseDate: { gte: start, lte: end },
+          creditCard: { userId },
+        },
         _sum: { totalAmountCents: true },
       });
       cardPortionCents = purchaseSum._sum.totalAmountCents ?? 0;
@@ -75,11 +81,11 @@ export class DashboardQueries {
     };
   }
 
-  async expensesByCategory(month: string, view: CompetencyView) {
+  async expensesByCategory(userId: string, month: string, view: CompetencyView) {
     const map = new Map<string, number>();
 
     const entries = await this.prisma.monthlyEntry.findMany({
-      where: { competencyMonth: month },
+      where: { userId, competencyMonth: month },
       include: { category: true },
     });
     for (const entry of entries) {
@@ -89,7 +95,10 @@ export class DashboardQueries {
 
     if (view === "payment") {
       const installmentRows = await this.prisma.purchaseInstallment.findMany({
-        where: { competencyMonth: month },
+        where: {
+          competencyMonth: month,
+          statement: { creditCard: { userId } },
+        },
         include: { purchase: true },
       });
       for (const row of installmentRows) {
@@ -101,7 +110,10 @@ export class DashboardQueries {
       const [year, monthNum] = month.split("-").map(Number);
       const end = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
       const purchases = await this.prisma.creditCardPurchase.findMany({
-        where: { purchaseDate: { gte: start, lte: end } },
+        where: {
+          purchaseDate: { gte: start, lte: end },
+          creditCard: { userId },
+        },
       });
       for (const purchase of purchases) {
         map.set(purchase.categoryId, (map.get(purchase.categoryId) ?? 0) + purchase.totalAmountCents);
@@ -220,8 +232,8 @@ export class DashboardQueries {
     }));
   }
 
-  async creditCardsOverview() {
-    const cards = await this.prisma.creditCard.findMany();
+  async creditCardsOverview(userId: string) {
+    const cards = await this.prisma.creditCard.findMany({ where: { userId } });
     const out: {
       creditCardId: string;
       name: string;
@@ -280,10 +292,14 @@ export class DashboardQueries {
     return out;
   }
 
-  async upcomingStatements(limit = 6) {
+  async upcomingStatements(userId: string, limit = 6) {
     const today = new Date();
     const stmts = await this.prisma.statement.findMany({
-      where: { dueDate: { gte: today }, status: { not: "paid" } },
+      where: {
+        dueDate: { gte: today },
+        status: { not: "paid" },
+        creditCard: { userId },
+      },
       orderBy: { dueDate: "asc" },
       take: limit,
       include: { creditCard: true },
@@ -307,13 +323,21 @@ export class DashboardQueries {
     return result;
   }
 
-  async futureCommitments(fromCompetencyMonth: string) {
+  async futureCommitments(userId: string, fromCompetencyMonth: string) {
     const rows = await this.prisma.purchaseInstallment.findMany({
-      where: { competencyMonth: { gte: fromCompetencyMonth }, status: "pending" },
+      where: {
+        competencyMonth: { gte: fromCompetencyMonth },
+        status: "pending",
+        statement: { creditCard: { userId } },
+      },
     });
     const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
     const activePurchases = await this.prisma.creditCardPurchase.findMany({
-      where: { isInstallmentPurchase: true, totalInstallments: { gt: 1 } },
+      where: {
+        isInstallmentPurchase: true,
+        totalInstallments: { gt: 1 },
+        creditCard: { userId },
+      },
     });
     return {
       fromCompetencyMonth,
@@ -323,9 +347,12 @@ export class DashboardQueries {
     };
   }
 
-  async openStatementsTotals() {
+  async openStatementsTotals(userId: string) {
     const stmts = await this.prisma.statement.findMany({
-      where: { status: { in: ["open", "closed", "overdue"] } },
+      where: {
+        status: { in: ["open", "closed", "overdue"] },
+        creditCard: { userId },
+      },
     });
     let totalCents = 0;
     for (const s of stmts) {
@@ -339,13 +366,13 @@ export class DashboardQueries {
     return { openStatementsPendingCents: totalCents };
   }
 
-  async kpis(month: string, view: CompetencyView) {
-    const summary = await this.monthlySummary(month, view);
+  async kpis(userId: string, month: string, view: CompetencyView) {
+    const summary = await this.monthlySummary(userId, month, view);
     const prevMonth = addMonthsToCompetencyMonth(month, -1);
-    const prevSummary = await this.monthlySummary(prevMonth, view);
-    const open = await this.openStatementsTotals();
-    const upcoming = await this.upcomingStatements(1);
-    const commitments = await this.futureCommitments(month);
+    const prevSummary = await this.monthlySummary(userId, prevMonth, view);
+    const open = await this.openStatementsTotals(userId);
+    const upcoming = await this.upcomingStatements(userId, 1);
+    const commitments = await this.futureCommitments(userId, month);
     const diff = summary.totalSpentCents - prevSummary.totalSpentCents;
     const diffPercent =
       prevSummary.totalSpentCents > 0

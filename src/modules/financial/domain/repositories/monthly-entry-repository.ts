@@ -21,15 +21,16 @@ export interface UpdateMonthlyEntryInput {
 }
 
 export interface MonthlyEntryRepository {
-  findById(id: string): Promise<MonthlyEntry | null>;
-  findByCompetencyMonth(month: string): Promise<MonthlyEntry[]>;
+  findById(id: string, userId: string): Promise<MonthlyEntry | null>;
+  findByCompetencyMonth(userId: string, month: string): Promise<MonthlyEntry[]>;
   findFixedExpenseEntryForMonth(
+    userId: string,
     fixedExpenseId: string,
     competencyMonth: string,
   ): Promise<MonthlyEntry | null>;
-  existsForFixedExpenseAndMonth(fixedExpenseId: string, competencyMonth: string): Promise<boolean>;
-  create(input: CreateMonthlyEntryInput): Promise<MonthlyEntry>;
-  update(id: string, input: UpdateMonthlyEntryInput): Promise<MonthlyEntry>;
-  delete(id: string): Promise<void>;
-  sumByCompetencyMonth(month: string): Promise<number>;
+  existsForFixedExpenseAndMonth(userId: string, fixedExpenseId: string, competencyMonth: string): Promise<boolean>;
+  create(userId: string, input: CreateMonthlyEntryInput): Promise<MonthlyEntry>;
+  update(id: string, userId: string, input: UpdateMonthlyEntryInput): Promise<MonthlyEntry>;
+  delete(id: string, userId: string): Promise<void>;
+  sumByCompetencyMonth(userId: string, month: string): Promise<number>;
 }

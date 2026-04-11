@@ -8,11 +8,11 @@ import type { MonthlyEntryRepository } from "../../domain/repositories/monthly-e
 import { competencyMonthFromDate } from "../../domain/value-objects/competency-month.js";
 
 export function makeListFixedExpenses(repo: FixedExpenseRepository) {
-  return () => repo.findAll();
+  return (userId: string) => repo.findAll(userId);
 }
 
 export function makeCreateFixedExpense(fixedRepo: FixedExpenseRepository, catRepo: CategoryRepository) {
-  return async (input: {
+  return async (userId: string, input: {
     name: string;
     description?: string | null;
     amountCents: number;
@@ -24,14 +24,15 @@ export function makeCreateFixedExpense(fixedRepo: FixedExpenseRepository, catRep
   }) => {
     assertNonNegativeCents(input.amountCents, "valor");
     assertDueDay(input.dueDay, "dia de vencimento");
-    const category = await catRepo.findById(input.categoryId);
+    const category = await catRepo.findById(input.categoryId, userId);
     if (!category) throw new NotFoundError("Category", input.categoryId);
-    return fixedRepo.create(input);
+    return fixedRepo.create(userId, input);
   };
 }
 
 export function makeUpdateFixedExpense(fixedRepo: FixedExpenseRepository, catRepo: CategoryRepository) {
   return async (
+    userId: string,
     id: string,
     input: {
       name?: string;
@@ -44,23 +45,23 @@ export function makeUpdateFixedExpense(fixedRepo: FixedExpenseRepository, catRep
       isVariableAmount?: boolean;
     },
   ) => {
-    const existing = await fixedRepo.findById(id);
+    const existing = await fixedRepo.findById(id, userId);
     if (!existing) throw new NotFoundError("FixedExpense", id);
     if (input.amountCents !== undefined) assertNonNegativeCents(input.amountCents, "valor");
     if (input.dueDay !== undefined) assertDueDay(input.dueDay, "dia de vencimento");
     if (input.categoryId !== undefined) {
-      const category = await catRepo.findById(input.categoryId);
+      const category = await catRepo.findById(input.categoryId, userId);
       if (!category) throw new NotFoundError("Category", input.categoryId);
     }
-    return fixedRepo.update(id, input);
+    return fixedRepo.update(id, userId, input);
   };
 }
 
 export function makeDisableFixedExpense(fixedRepo: FixedExpenseRepository) {
-  return async (id: string) => {
-    const existing = await fixedRepo.findById(id);
+  return async (userId: string, id: string) => {
+    const existing = await fixedRepo.findById(id, userId);
     if (!existing) throw new NotFoundError("FixedExpense", id);
-    return fixedRepo.update(id, { isActive: false });
+    return fixedRepo.update(id, userId, { isActive: false });
   };
 }
 
@@ -68,14 +69,14 @@ export function makeGenerateMonthlyEntriesFromFixedExpenses(
   fixedRepo: FixedExpenseRepository,
   entriesRepo: MonthlyEntryRepository,
 ) {
-  return async (competencyMonthRaw: string) => {
+  return async (userId: string, competencyMonthRaw: string) => {
     const competencyMonth = parseCompetencyMonth(competencyMonthRaw);
-    const active = await fixedRepo.findActiveRecurring();
+    const active = await fixedRepo.findActiveRecurring(userId);
     const created: string[] = [];
     const skipped: string[] = [];
 
     for (const fixedExpense of active) {
-      const exists = await entriesRepo.existsForFixedExpenseAndMonth(fixedExpense.id, competencyMonth);
+      const exists = await entriesRepo.existsForFixedExpenseAndMonth(userId, fixedExpense.id, competencyMonth);
       if (exists) {
         skipped.push(fixedExpense.id);
         continue;
@@ -87,13 +88,13 @@ export function makeGenerateMonthlyEntriesFromFixedExpenses(
       let amountCents = fixedExpense.amountCents;
       if (fixedExpense.isVariableAmount) {
         const prevMonth = addMonthsToCompetencyMonth(competencyMonth, -1);
-        const prevEntry = await entriesRepo.findFixedExpenseEntryForMonth(fixedExpense.id, prevMonth);
+        const prevEntry = await entriesRepo.findFixedExpenseEntryForMonth(userId, fixedExpense.id, prevMonth);
         if (prevEntry) {
           amountCents = prevEntry.amountCents;
         }
       }
 
-      await entriesRepo.create({
+      await entriesRepo.create(userId, {
         description: fixedExpense.name,
         amountCents,
         date,
@@ -114,7 +115,7 @@ export function makeRegisterVariableExpense(
   entriesRepo: MonthlyEntryRepository,
   catRepo: CategoryRepository,
 ) {
-  return async (input: {
+  return async (userId: string, input: {
     description: string;
     amountCents: number;
     date: Date;
@@ -123,12 +124,12 @@ export function makeRegisterVariableExpense(
     competencyMonth?: string;
   }) => {
     assertNonNegativeCents(input.amountCents, "valor");
-    const category = await catRepo.findById(input.categoryId);
+    const category = await catRepo.findById(input.categoryId, userId);
     if (!category) throw new NotFoundError("Category", input.categoryId);
     const competencyMonth = input.competencyMonth
       ? parseCompetencyMonth(input.competencyMonth)
       : competencyMonthFromDate(input.date);
-    return entriesRepo.create({
+    return entriesRepo.create(userId, {
       description: input.description,
       amountCents: input.amountCents,
       date: input.date,
@@ -142,16 +143,16 @@ export function makeRegisterVariableExpense(
 }
 
 export function makeListMonthlyEntries(entriesRepo: MonthlyEntryRepository) {
-  return async (competencyMonthRaw: string) => {
+  return async (userId: string, competencyMonthRaw: string) => {
     const competencyMonth = parseCompetencyMonth(competencyMonthRaw);
-    return entriesRepo.findByCompetencyMonth(competencyMonth);
+    return entriesRepo.findByCompetencyMonth(userId, competencyMonth);
   };
 }
 
 export function makeGetMonthlyEntriesSummary(entriesRepo: MonthlyEntryRepository) {
-  return async (competencyMonthRaw: string) => {
+  return async (userId: string, competencyMonthRaw: string) => {
     const competencyMonth = parseCompetencyMonth(competencyMonthRaw);
-    const entries = await entriesRepo.findByCompetencyMonth(competencyMonth);
+    const entries = await entriesRepo.findByCompetencyMonth(userId, competencyMonth);
     let variableCents = 0;
     let fixedCents = 0;
     for (const entry of entries) {
@@ -168,6 +169,7 @@ export function makeUpdateMonthlyEntry(
   catRepo: CategoryRepository,
 ) {
   return async (
+    userId: string,
     id: string,
     input: {
       description?: string;
@@ -178,15 +180,15 @@ export function makeUpdateMonthlyEntry(
       paymentMethod?: "cash" | "debit" | "pix" | "credit_card";
     },
   ) => {
-    const existing = await entriesRepo.findById(id);
+    const existing = await entriesRepo.findById(id, userId);
     if (!existing) throw new NotFoundError("MonthlyEntry", id);
     if (input.amountCents !== undefined) assertNonNegativeCents(input.amountCents, "valor");
     if (input.competencyMonth !== undefined) parseCompetencyMonth(input.competencyMonth);
     if (input.categoryId !== undefined) {
-      const category = await catRepo.findById(input.categoryId);
+      const category = await catRepo.findById(input.categoryId, userId);
       if (!category) throw new NotFoundError("Category", input.categoryId);
     }
-    return entriesRepo.update(id, {
+    return entriesRepo.update(id, userId, {
       ...input,
       competencyMonth: input.competencyMonth ? parseCompetencyMonth(input.competencyMonth) : undefined,
     });
@@ -194,9 +196,9 @@ export function makeUpdateMonthlyEntry(
 }
 
 export function makeDeleteMonthlyEntry(entriesRepo: MonthlyEntryRepository) {
-  return async (id: string) => {
-    const existing = await entriesRepo.findById(id);
+  return async (userId: string, id: string) => {
+    const existing = await entriesRepo.findById(id, userId);
     if (!existing) throw new NotFoundError("MonthlyEntry", id);
-    await entriesRepo.delete(id);
+    await entriesRepo.delete(id, userId);
   };
 }

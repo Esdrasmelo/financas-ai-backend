@@ -15,9 +15,9 @@ export interface UpdateCategoryInput {
 }
 
 export interface CategoryRepository {
-  findAll(): Promise<Category[]>;
-  findById(id: string): Promise<Category | null>;
-  create(input: CreateCategoryInput): Promise<Category>;
-  update(id: string, input: UpdateCategoryInput): Promise<Category>;
-  delete(id: string): Promise<void>;
+  findAll(userId: string): Promise<Category[]>;
+  findById(id: string, userId: string): Promise<Category | null>;
+  create(userId: string, input: CreateCategoryInput): Promise<Category>;
+  update(id: string, userId: string, input: UpdateCategoryInput): Promise<Category>;
+  delete(id: string, userId: string): Promise<void>;
 }
