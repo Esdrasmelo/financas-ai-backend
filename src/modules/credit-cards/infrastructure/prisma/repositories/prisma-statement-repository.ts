@@ -1,4 +1,4 @@
-import type { PrismaClient, StatementStatus as PStatus } from "@prisma/client";
+import type { Prisma, PrismaClient, StatementStatus as PStatus } from "@prisma/client";
 import type {
   CreateStatementInput,
   StatementRepository,
@@ -29,9 +29,13 @@ export class PrismaStatementRepository implements StatementRepository {
     return rows.map(toStatementDomain);
   }
 
-  async listAll(filters?: { creditCardId?: string }) {
+  async listAll(filters: { userId: string; creditCardId?: string }) {
+    const creditCardWhere: Prisma.CreditCardWhereInput = {
+      userId: filters.userId,
+      ...(filters.creditCardId ? { id: filters.creditCardId } : { isActive: true }),
+    };
     const rows = await this.db.statement.findMany({
-      where: filters?.creditCardId ? { creditCardId: filters.creditCardId } : undefined,
+      where: { creditCard: creditCardWhere },
       orderBy: [{ referenceMonth: "asc" }],
     });
     return rows.map(toStatementDomain);

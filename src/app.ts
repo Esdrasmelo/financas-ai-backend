@@ -7,6 +7,7 @@ import { createCreditCardRouter } from "./modules/credit-cards/infrastructure/ht
 import { createDashboardRouter } from "./modules/dashboard/infrastructure/http/dashboard-routes.js";
 import { createBudgetRouter } from "./modules/budget/infrastructure/http/budget-routes.js";
 import { createAiRouter } from "./modules/ai/infrastructure/http/ai-routes.js";
+import { createReportRouter } from "./modules/reports/infrastructure/http/report-routes.js";
 import { authMiddleware } from "./shared/infrastructure/http/auth-middleware.js";
 import { errorHandler } from "./shared/infrastructure/http/error-handler.js";
 import { requestLogger } from "./shared/infrastructure/http/request-logger.js";
@@ -35,6 +36,7 @@ export function createApp(prisma: PrismaClient): Express {
   app.use(createDashboardRouter(prisma));
   app.use(createBudgetRouter(prisma));
   app.use(createAiRouter(prisma));
+  app.use(createReportRouter(prisma));
 
   app.use(errorHandler);
   return app;

@@ -356,9 +356,10 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
       const queryParseResult = z
         .object({ creditCardId: z.string().uuid().optional() })
         .safeParse(req.query);
-      res.json(
-        await listStmts(queryParseResult.success ? queryParseResult.data.creditCardId : undefined),
-      );
+      if (!queryParseResult.success) {
+        throw new ValidationError("query: creditCardId UUID opcional");
+      }
+      res.json(await listStmts(req.userId, queryParseResult.data.creditCardId));
     }),
   );
 
