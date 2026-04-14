@@ -4,6 +4,10 @@ import type { PrismaClient } from "@prisma/client";
 import { asyncHandler } from "../../../../shared/infrastructure/http/error-handler.js";
 import { ValidationError } from "../../../../shared/domain/errors/domain-error.js";
 import { DashboardQueries, type CompetencyView } from "../queries/dashboard-queries.js";
+import {
+  addMonthsToCompetencyMonth,
+  competencyMonthFromDate,
+} from "../../../financial/domain/value-objects/competency-month.js";
 
 const monthQuery = z.object({
   competencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
@@ -82,6 +86,47 @@ export function createDashboardRouter(prisma: PrismaClient): Router {
       }
       const limit = queryParseResult.data.limit ?? 6;
       res.json(await dashboardQueries.upcomingStatements(req.userId, limit));
+    }),
+  );
+
+  router.get(
+    "/dashboard/monthly-evolution",
+    asyncHandler(async (req, res) => {
+      const today = new Date();
+      const currentMonth = competencyMonthFromDate(today);
+      const defaultTo = addMonthsToCompetencyMonth(currentMonth, 5);
+
+      const schema = z.object({
+        fromCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+        toCompetencyMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+        view: z.enum(["occurrence", "payment"]).optional(),
+      });
+      const queryParseResult = schema.safeParse(req.query);
+      if (!queryParseResult.success) {
+        throw new ValidationError(
+          "query: fromCompetencyMonth YYYY-MM opcional; toCompetencyMonth YYYY-MM opcional; view opcional occurrence|payment",
+        );
+      }
+      const from = queryParseResult.data.fromCompetencyMonth ?? currentMonth;
+      const to = queryParseResult.data.toCompetencyMonth ?? defaultTo;
+      const view = queryParseResult.data.view ?? "occurrence";
+      res.json(await dashboardQueries.monthlyEvolutionSeries(req.userId, from, to, view));
+    }),
+  );
+
+  router.get(
+    "/dashboard/entries-breakdown",
+    asyncHandler(async (req, res) => {
+      const { competencyMonth } = parseMonthQuery(req);
+      res.json(await dashboardQueries.entriesBreakdown(req.userId, competencyMonth));
+    }),
+  );
+
+  router.get(
+    "/dashboard/credit-card-purchases-breakdown",
+    asyncHandler(async (req, res) => {
+      const { competencyMonth, view } = parseMonthQuery(req);
+      res.json(await dashboardQueries.creditCardPurchasesBreakdown(req.userId, competencyMonth, view));
     }),
   );
 

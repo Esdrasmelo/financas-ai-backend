@@ -449,7 +449,7 @@ export function makeListStatementsByCard(stmtRepo: StatementRepository, cardRepo
 }
 
 export function makeListAllStatements(stmtRepo: StatementRepository) {
-  return (creditCardId?: string) => stmtRepo.listAll({ creditCardId });
+  return (userId: string, creditCardId?: string) => stmtRepo.listAll({ userId, creditCardId });
 }
 
 export function makeGetStatementDetails(
@@ -522,6 +522,7 @@ export function makeGetStatementDetails(
         competencyMonth: row.competencyMonth,
         status: row.status,
         purchaseDescription: row.purchase.description,
+        purchaseDate: row.purchase.purchaseDate,
         purchaseId: row.purchaseId,
         categoryId: row.purchase.categoryId,
         categoryName: row.purchase.category.name,

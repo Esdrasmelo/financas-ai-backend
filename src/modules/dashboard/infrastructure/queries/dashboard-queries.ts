@@ -366,37 +366,129 @@ export class DashboardQueries {
     return { openStatementsPendingCents: totalCents };
   }
 
+  /**
+   * Soma o valor das parcelas de todas as faturas cujo vencimento (`dueDate`) cai no mês de competência
+   * (independente da visão por ocorrência/pagamento do dashboard).
+   */
+  async statementsDueInCompetencyMonthTotalCents(userId: string, competencyMonth: string) {
+    const [year, monthNum] = competencyMonth.split("-").map(Number);
+    const start = new Date(`${competencyMonth}-01T00:00:00.000Z`);
+    const end = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
+    const aggregate = await this.prisma.purchaseInstallment.aggregate({
+      where: {
+        statement: {
+          dueDate: { gte: start, lte: end },
+          creditCard: { userId },
+        },
+      },
+      _sum: { amountCents: true },
+    });
+    return aggregate._sum.amountCents ?? 0;
+  }
+
+  async monthlyEvolutionSeries(
+    userId: string,
+    fromCompetencyMonth: string,
+    toCompetencyMonth: string,
+    view: CompetencyView,
+  ) {
+    const months = expandCompetencyMonthRange(fromCompetencyMonth, toCompetencyMonth);
+    const series = await Promise.all(
+      months.map((month) => this.monthlySummary(userId, month, view)),
+    );
+    return series;
+  }
+
+  async entriesBreakdown(userId: string, month: string) {
+    const entries = await this.prisma.monthlyEntry.findMany({
+      where: { userId, competencyMonth: month },
+      include: { category: true },
+      orderBy: { date: "asc" },
+    });
+    return entries.map((entry) => ({
+      id: entry.id,
+      description: entry.description,
+      amountCents: entry.amountCents,
+      date: entry.date,
+      sourceType: entry.sourceType as "fixed_expense" | "variable",
+      categoryName: entry.category.name,
+    }));
+  }
+
+  async creditCardPurchasesBreakdown(userId: string, month: string, view: CompetencyView) {
+    if (view === "payment") {
+      const rows = await this.prisma.purchaseInstallment.findMany({
+        where: {
+          competencyMonth: month,
+          statement: { creditCard: { userId } },
+        },
+        include: {
+          purchase: true,
+          statement: { include: { creditCard: true } },
+        },
+        orderBy: { purchase: { purchaseDate: "asc" } },
+      });
+      return rows.map((row) => ({
+        id: row.id,
+        description: row.purchase.description,
+        amountCents: row.amountCents,
+        purchaseDate: row.purchase.purchaseDate,
+        creditCardName: row.statement.creditCard.name,
+        installmentNumber: row.installmentNumber,
+        totalInstallments: row.totalInstallments,
+      }));
+    } else {
+      const start = new Date(`${month}-01T00:00:00.000Z`);
+      const [year, monthNum] = month.split("-").map(Number);
+      const end = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
+      const purchases = await this.prisma.creditCardPurchase.findMany({
+        where: {
+          purchaseDate: { gte: start, lte: end },
+          creditCard: { userId },
+        },
+        include: { creditCard: true },
+        orderBy: { purchaseDate: "asc" },
+      });
+      return purchases.map((purchase) => ({
+        id: purchase.id,
+        description: purchase.description,
+        amountCents: purchase.totalAmountCents,
+        purchaseDate: purchase.purchaseDate,
+        creditCardName: purchase.creditCard.name,
+        installmentNumber: null,
+        totalInstallments: purchase.isInstallmentPurchase ? purchase.totalInstallments : null,
+      }));
+    }
+  }
+
   async kpis(userId: string, month: string, view: CompetencyView) {
     const summary = await this.monthlySummary(userId, month, view);
     const prevMonth = addMonthsToCompetencyMonth(month, -1);
     const prevSummary = await this.monthlySummary(userId, prevMonth, view);
-    const open = await this.openStatementsTotals(userId);
-    const upcoming = await this.upcomingStatements(userId, 1);
-    const commitments = await this.futureCommitments(userId, month);
+    const statementsDueInMonthTotalCents = await this.statementsDueInCompetencyMonthTotalCents(userId, month);
+    const entriesTotalCents = summary.fixedExpensesCents + summary.variableExpensesCents;
+    // Total do mês = contas fixas + variáveis + parte cartão (mesma regra de monthly-summary / README).
+    if (entriesTotalCents + summary.creditCardPortionCents !== summary.totalSpentCents) {
+      throw new Error("Invariante KPI: totalSpentCents deve ser entriesTotalCents + creditCardPortionCents");
+    }
     const diff = summary.totalSpentCents - prevSummary.totalSpentCents;
     const diffPercent =
       prevSummary.totalSpentCents > 0
         ? Math.round((diff / prevSummary.totalSpentCents) * 10000) / 100
         : null;
 
-    const denom = summary.totalSpentCents + commitments.futureInstallmentsCents;
-    const committedPercent =
-      denom > 0 ? Math.round((commitments.futureInstallmentsCents / denom) * 10000) / 100 : null;
-
     return {
       competencyMonth: month,
       view,
       totalSpentCents: summary.totalSpentCents,
+      entriesTotalCents,
+      creditCardPortionCents: summary.creditCardPortionCents,
+      statementsDueInMonthTotalCents,
       fixedExpensesCents: summary.fixedExpensesCents,
       variableExpensesCents: summary.variableExpensesCents,
       previousMonthTotalCents: prevSummary.totalSpentCents,
       monthOverMonthDiffCents: diff,
       monthOverMonthDiffPercent: diffPercent,
-      openStatementsPendingCents: open.openStatementsPendingCents,
-      nextStatement: upcoming[0] ?? null,
-      futureInstallmentsCents: commitments.futureInstallmentsCents,
-      activeInstallmentPurchasesCount: commitments.activeInstallmentPurchasesCount,
-      percentCommittedApprox: committedPercent,
     };
   }
 }
