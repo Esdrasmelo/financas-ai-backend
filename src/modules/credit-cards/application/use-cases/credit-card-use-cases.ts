@@ -221,15 +221,19 @@ export function makeRegisterCreditCardPurchase(
     totalInstallments: number;
     currentInstallment: number;
     installmentAmountCents?: number | null;
+    isRefund?: boolean;
   }) => {
     const creditCard = await cardRepo.findById(input.creditCardId, userId);
     if (!creditCard) throw new NotFoundError("CreditCard", input.creditCardId);
     const category = await catRepo.findById(input.categoryId, userId);
     if (!category) throw new NotFoundError("Category", input.categoryId);
 
+    const isRefund = input.isRefund === true;
+    const isInstallmentPurchase = isRefund ? false : input.isInstallmentPurchase;
+
     let effectiveTotalInstallments = input.totalInstallments;
     let effectiveCurrentInstallment = input.currentInstallment;
-    if (!input.isInstallmentPurchase) {
+    if (!isInstallmentPurchase) {
       effectiveTotalInstallments = 1;
       effectiveCurrentInstallment = 1;
     }
@@ -239,17 +243,22 @@ export function makeRegisterCreditCardPurchase(
     }
 
     const resolved = resolvePurchaseTotalAndInstallmentMode({
-      isInstallmentPurchase: input.isInstallmentPurchase,
+      isInstallmentPurchase,
       totalInstallments: effectiveTotalInstallments,
       totalAmountCents: input.totalAmountCents,
       installmentAmountCents: input.installmentAmountCents,
+      isRefund,
     });
-    assertNonNegativeCents(resolved.totalAmountCents, "valor total");
-    if (input.isInstallmentPurchase && resolved.totalAmountCents <= 0) {
-      throw new ValidationError("informe valor da parcela ou valor total da compra");
-    }
-    if (!input.isInstallmentPurchase && resolved.totalAmountCents <= 0) {
-      throw new ValidationError("valor total deve ser maior que zero");
+    if (isRefund) {
+      if (resolved.totalAmountCents === 0) throw new ValidationError("valor do estorno deve ser maior que zero");
+    } else {
+      assertNonNegativeCents(resolved.totalAmountCents, "valor total");
+      if (isInstallmentPurchase && resolved.totalAmountCents <= 0) {
+        throw new ValidationError("informe valor da parcela ou valor total da compra");
+      }
+      if (!isInstallmentPurchase && resolved.totalAmountCents <= 0) {
+        throw new ValidationError("valor total deve ser maior que zero");
+      }
     }
 
     const amounts =
@@ -265,7 +274,8 @@ export function makeRegisterCreditCardPurchase(
           description: input.description,
           purchaseDate: input.purchaseDate,
           totalAmountCents: resolved.totalAmountCents,
-          isInstallmentPurchase: input.isInstallmentPurchase,
+          isRefund,
+          isInstallmentPurchase,
           totalInstallments: effectiveTotalInstallments,
           currentInstallment: effectiveCurrentInstallment,
           installmentAmountCents:
@@ -310,6 +320,7 @@ export function makeUpdateCreditCardPurchase(
       totalInstallments: number;
       currentInstallment: number;
       installmentAmountCents?: number | null;
+      isRefund?: boolean;
     },
   ) => {
     const existing = await purRepo.findById(id);
@@ -321,9 +332,13 @@ export function makeUpdateCreditCardPurchase(
     const category = await catRepo.findById(input.categoryId, userId);
     if (!category) throw new NotFoundError("Category", input.categoryId);
 
+    // sem o campo no payload, mantém a natureza do lançamento já gravado
+    const isRefund = input.isRefund ?? existing.isRefund;
+    const isInstallmentPurchase = isRefund ? false : input.isInstallmentPurchase;
+
     let effectiveTotalInstallments = input.totalInstallments;
     let effectiveCurrentInstallment = input.currentInstallment;
-    if (!input.isInstallmentPurchase) {
+    if (!isInstallmentPurchase) {
       effectiveTotalInstallments = 1;
       effectiveCurrentInstallment = 1;
     }
@@ -333,17 +348,22 @@ export function makeUpdateCreditCardPurchase(
     }
 
     const resolved = resolvePurchaseTotalAndInstallmentMode({
-      isInstallmentPurchase: input.isInstallmentPurchase,
+      isInstallmentPurchase,
       totalInstallments: effectiveTotalInstallments,
       totalAmountCents: input.totalAmountCents,
       installmentAmountCents: input.installmentAmountCents,
+      isRefund,
     });
-    assertNonNegativeCents(resolved.totalAmountCents, "valor total");
-    if (input.isInstallmentPurchase && resolved.totalAmountCents <= 0) {
-      throw new ValidationError("informe valor da parcela ou valor total da compra");
-    }
-    if (!input.isInstallmentPurchase && resolved.totalAmountCents <= 0) {
-      throw new ValidationError("valor total deve ser maior que zero");
+    if (isRefund) {
+      if (resolved.totalAmountCents === 0) throw new ValidationError("valor do estorno deve ser maior que zero");
+    } else {
+      assertNonNegativeCents(resolved.totalAmountCents, "valor total");
+      if (isInstallmentPurchase && resolved.totalAmountCents <= 0) {
+        throw new ValidationError("informe valor da parcela ou valor total da compra");
+      }
+      if (!isInstallmentPurchase && resolved.totalAmountCents <= 0) {
+        throw new ValidationError("valor total deve ser maior que zero");
+      }
     }
 
     const amounts =
@@ -364,7 +384,7 @@ export function makeUpdateCreditCardPurchase(
       !structuralPurchaseEquals(existing, {
         purchaseDate: input.purchaseDate,
         totalAmountCents: resolved.totalAmountCents,
-        isInstallmentPurchase: input.isInstallmentPurchase,
+        isInstallmentPurchase,
         totalInstallments: effectiveTotalInstallments,
         currentInstallment: effectiveCurrentInstallment,
       })
@@ -395,7 +415,8 @@ export function makeUpdateCreditCardPurchase(
           description: input.description,
           purchaseDate: input.purchaseDate,
           totalAmountCents: resolved.totalAmountCents,
-          isInstallmentPurchase: input.isInstallmentPurchase,
+          isRefund,
+          isInstallmentPurchase,
           totalInstallments: effectiveTotalInstallments,
           currentInstallment: effectiveCurrentInstallment,
           installmentAmountCents:
@@ -449,7 +470,7 @@ export function makeListStatementsByCard(stmtRepo: StatementRepository, cardRepo
 }
 
 export function makeListAllStatements(stmtRepo: StatementRepository) {
-  return (creditCardId?: string) => stmtRepo.listAll({ creditCardId });
+  return (userId: string, creditCardId?: string) => stmtRepo.listAll({ userId, creditCardId });
 }
 
 export function makeGetStatementDetails(
@@ -522,6 +543,7 @@ export function makeGetStatementDetails(
         competencyMonth: row.competencyMonth,
         status: row.status,
         purchaseDescription: row.purchase.description,
+        purchaseDate: row.purchase.purchaseDate,
         purchaseId: row.purchaseId,
         categoryId: row.purchase.categoryId,
         categoryName: row.purchase.category.name,

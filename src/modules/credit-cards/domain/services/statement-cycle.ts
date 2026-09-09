@@ -126,13 +126,20 @@ export function splitInstallmentCents(totalCents: number, totalInstallments: num
  * Compra parcelada: pode informar `installmentAmountCents` (valor fixo de cada parcela);
  * o total da compra vira `installmentAmountCents * totalInstallments`.
  * Caso contrário usa-se `totalAmountCents` com repartição via `splitInstallmentCents`.
+ *
+ * Estorno (`isRefund`): o valor chega positivo e é gravado negativo, em parcela única,
+ * para abater naturalmente dos totais de fatura, dashboard e orçamento.
  */
 export function resolvePurchaseTotalAndInstallmentMode(input: {
   isInstallmentPurchase: boolean;
   totalInstallments: number;
   totalAmountCents: number;
   installmentAmountCents?: number | null;
+  isRefund?: boolean;
 }): { totalAmountCents: number; equalInstallmentCents?: number } {
+  if (input.isRefund) {
+    return { totalAmountCents: -Math.abs(input.totalAmountCents) };
+  }
   const installmentCount = input.totalInstallments;
   if (!input.isInstallmentPurchase || installmentCount < 1) {
     return { totalAmountCents: input.totalAmountCents };

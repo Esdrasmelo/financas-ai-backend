@@ -46,6 +46,8 @@ interface UserResponse {
   themeMode: string;
   themePrimary: string;
   themeAccent: string;
+
+  onboardingCompletedAt: string | null;
 }
 
 function toUserResponse(user: {
@@ -55,6 +57,7 @@ function toUserResponse(user: {
   themeMode: string;
   themePrimary: string;
   themeAccent: string;
+  onboardingCompletedAt: Date | null;
 }): UserResponse {
   return {
     id: user.id,
@@ -63,6 +66,7 @@ function toUserResponse(user: {
     themeMode: user.themeMode,
     themePrimary: user.themePrimary,
     themeAccent: user.themeAccent,
+    onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null,
   };
 }
 

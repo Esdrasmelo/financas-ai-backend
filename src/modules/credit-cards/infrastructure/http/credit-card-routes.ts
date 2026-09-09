@@ -82,6 +82,8 @@ const purchaseFieldsSchema = z.object({
   totalInstallments: z.number().int().min(1),
   currentInstallment: z.number().int().min(1),
   installmentAmountCents: z.number().int().nonnegative().optional(),
+  /** Estorno: informe o valor positivo; o domínio grava negativo em parcela única. */
+  isRefund: z.boolean().optional(),
 });
 
 const purchaseSchema = purchaseFieldsSchema
@@ -356,9 +358,10 @@ export function createCreditCardRouter(prisma: PrismaClient): Router {
       const queryParseResult = z
         .object({ creditCardId: z.string().uuid().optional() })
         .safeParse(req.query);
-      res.json(
-        await listStmts(queryParseResult.success ? queryParseResult.data.creditCardId : undefined),
-      );
+      if (!queryParseResult.success) {
+        throw new ValidationError("query: creditCardId UUID opcional");
+      }
+      res.json(await listStmts(req.userId, queryParseResult.data.creditCardId));
     }),
   );
 

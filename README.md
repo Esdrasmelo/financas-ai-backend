@@ -62,6 +62,45 @@ API REST em **Node.js** + **Express** + **Prisma** (PostgreSQL) para controle de
 
 ---
 
+## Docker
+
+O `docker-compose.yml` tem dois modos, controlados por profile:
+
+**Só o banco** (fluxo de desenvolvimento — a API roda no host com `pnpm dev`):
+
+```bash
+docker compose up -d
+```
+
+**Banco + API containerizada:**
+
+```bash
+docker compose --profile api up -d --build
+```
+
+Nesse modo a imagem é construída a partir do `Dockerfile` (multi-stage, Node 24 slim,
+apenas dependências de produção) e o `docker-entrypoint.sh` roda `prisma migrate deploy`
+antes de subir o servidor. Para pular as migrations, defina `RUN_MIGRATIONS=false`.
+
+As variáveis vêm do `.env` (opcional) e podem ser sobrescritas:
+
+| Variável            | Padrão            | Uso                                  |
+| ------------------- | ----------------- | ------------------------------------ |
+| `POSTGRES_USER`     | `financas`        | Usuário do Postgres                  |
+| `POSTGRES_PASSWORD` | `financas123`     | Senha do Postgres                    |
+| `POSTGRES_DB`       | `prisma_financas` | Nome do banco                        |
+| `POSTGRES_PORT`     | `5433`            | Porta publicada no host              |
+| `API_PORT`          | `3001`            | Porta da API publicada no host       |
+| `RUN_MIGRATIONS`    | `true`            | Aplicar migrations no start          |
+
+O `DATABASE_URL` é sempre sobrescrito pelo compose para apontar a `postgres:5432`
+(hostname interno da rede), independente do que estiver no `.env`.
+
+O compose cria a rede `financas-net`, usada também pelo `docker-compose.yml` do
+`financas-ai-frontend` — suba o backend primeiro.
+
+---
+
 ## Scripts
 
 | Comando          | Descrição                          |
@@ -155,21 +194,20 @@ Devolve linhas com `categoryId`, `categoryName` e `amountCents`.
 
 ### `GET /dashboard/kpis`
 
-Compõe várias leituras:
+Compõe o `monthly-summary` do mês pedido (mesma `view`), o mês anterior para comparação, e totais adicionais:
 
 | Campo | Origem / fórmula |
 | ----- | ---------------- |
-| `totalSpentCents`, `fixedExpensesCents`, `variableExpensesCents` | Igual ao `monthly-summary` do mês pedido. |
+| `totalSpentCents` | Igual ao `monthly-summary`: **contas fixas + variáveis + parte cartão** (`creditCardPortionCents`), conforme a `view`. |
+| `entriesTotalCents` | `fixedExpensesCents + variableExpensesCents` (só `MonthlyEntry` na competência). |
+| `creditCardPortionCents` | Igual ao `monthly-summary` (parcelas no mês se `payment`; compras no calendário se `occurrence`). |
+| `statementsDueInMonthTotalCents` | Soma `amountCents` de **todas** as parcelas cujo `Statement.dueDate` cai no mês de competência (UTC); independe da `view`. |
+| `fixedExpensesCents`, `variableExpensesCents` | Igual ao `monthly-summary`. |
 | `previousMonthTotalCents` | `totalSpentCents` do **mês anterior** (mesma `view`). |
 | `monthOverMonthDiffCents` | `totalSpentCents (atual) − totalSpentCents (anterior)`. |
 | `monthOverMonthDiffPercent` | `(diff / anterior) × 100`, arredondado a 2 casas; `null` se o mês anterior for 0. |
-| `openStatementsPendingCents` | Para cada fatura com status em `open`, `closed` ou `overdue`, soma parcelas **pendentes** (`status: "pending"`) dessa fatura; acumula em todas as faturas. |
-| `nextStatement` | Primeiro item de `upcomingStatements(1)` (próxima fatura não paga com `dueDate ≥ hoje`). |
-| `futureInstallmentsCents` | Soma `amountCents` de **todas** as parcelas com `competencyMonth ≥ fromMonth` (do endpoint `future-commitments`) e `status: "pending"`. |
-| `activeInstallmentPurchasesCount` | Contagem de `CreditCardPurchase` com `isInstallmentPurchase` e `totalInstallments > 1`. |
-| `percentCommittedApprox` | `100 × futureInstallmentsCents / (totalSpentCents + futureInstallmentsCents)`, arredondado a 2 casas; `null` se o denominador for 0. |
 
-> **Interpretação:** o “comprometido” aproximado compara o total já gasto no mês (incluindo cartão na visão escolhida) com o montante ainda pendente em parcelas futuras a partir da competência indicada — é um indicador relativo, não um saldo de caixa.
+> **Consistência:** `totalSpentCents` = `entriesTotalCents` + `creditCardPortionCents` (validado no servidor).
 
 ---
 
