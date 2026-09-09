@@ -27,15 +27,17 @@ prisma/*.db
 prisma/*.db-journal
 prisma/sqlite-export.json
 
+# Extratos e faturas (dados pessoais)
+faturas/
+
 # Test / coverage
 coverage/
-
-# Cursor
-.cursor
 
 # Workspace
 *-workspace
 
-# Claude
-.claude
-CLAUDE.md
+# Scripts locais de importacao (contem dados financeiros pessoais)
+scripts/
+
+# Notas locais
+todo.md

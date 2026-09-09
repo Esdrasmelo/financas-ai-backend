@@ -5,6 +5,8 @@ export interface CreditCardPurchase {
   description: string;
   purchaseDate: Date;
   totalAmountCents: number;
+  /** Estorno/crédito do cartão: `totalAmountCents` é negativo e a compra tem parcela única. */
+  isRefund: boolean;
   isInstallmentPurchase: boolean;
   totalInstallments: number;
   currentInstallment: number;

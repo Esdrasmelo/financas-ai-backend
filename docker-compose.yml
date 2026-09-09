@@ -4,14 +4,59 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: prisma-financas-postgres
+    restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     environment:
-      POSTGRES_USER: financas
-      POSTGRES_PASSWORD: financas123
-      POSTGRES_DB: prisma_financas
+      POSTGRES_USER: ${POSTGRES_USER:-financas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-financas123}
+      POSTGRES_DB: ${POSTGRES_DB:-prisma_financas}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financas} -d ${POSTGRES_DB:-prisma_financas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - financas
+
+  api:
+    build:
+      context: .
+      target: runner
+    container_name: prisma-financas-api
+    restart: unless-stopped
+    # Perfil opcional: `docker compose up` sobe só o banco (fluxo de dev com `pnpm dev`),
+    # `docker compose --profile api up` sobe banco + API containerizada.
+    profiles: ["api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # Sobrescreve o DATABASE_URL do .env: dentro da rede o host é `postgres:5432`.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-financas}:${POSTGRES_PASSWORD:-financas123}@postgres:5432/${POSTGRES_DB:-prisma_financas}?schema=public
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - financas
 
 volumes:
   pgdata:
+
+networks:
+  financas:
+    name: financas-net

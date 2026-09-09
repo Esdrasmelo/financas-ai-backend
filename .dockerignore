@@ -1,0 +1,36 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+
+.git
+.gitignore
+.github
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Dados pessoais / locais
+faturas/
+scripts/
+prisma/*.db
+prisma/*.db-journal
+prisma/sqlite-export.json
+logs/
+*.log
+
+# Configuracoes de editor / workspace
+.idea
+.vscode
+*-workspace
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Documentacao e notas (nao entram no build)
+docs
+*.md
