@@ -48,6 +48,27 @@ describe("resolvePurchaseTotalAndInstallmentMode", () => {
     expect(resolved.totalAmountCents).toBe(5000);
     expect(resolved.equalInstallmentCents).toBeUndefined();
   });
+
+  it("estorno grava valor negativo em parcela única", () => {
+    const resolved = resolvePurchaseTotalAndInstallmentMode({
+      isInstallmentPurchase: false,
+      totalInstallments: 1,
+      totalAmountCents: 21031,
+      isRefund: true,
+    });
+    expect(resolved.totalAmountCents).toBe(-21031);
+    expect(resolved.equalInstallmentCents).toBeUndefined();
+  });
+
+  it("estorno mantém o sinal negativo se o valor já vier negativo", () => {
+    const resolved = resolvePurchaseTotalAndInstallmentMode({
+      isInstallmentPurchase: false,
+      totalInstallments: 1,
+      totalAmountCents: -21031,
+      isRefund: true,
+    });
+    expect(resolved.totalAmountCents).toBe(-21031);
+  });
 });
 
 describe("splitInstallmentCents", () => {

@@ -47,6 +47,7 @@ export function toPurchaseDomain(row: PPur): CreditCardPurchase {
     description: row.description,
     purchaseDate: row.purchaseDate,
     totalAmountCents: row.totalAmountCents,
+    isRefund: row.isRefund,
     isInstallmentPurchase: row.isInstallmentPurchase,
     totalInstallments: row.totalInstallments,
     currentInstallment: row.currentInstallment,

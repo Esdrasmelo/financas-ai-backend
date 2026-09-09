@@ -8,15 +8,17 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  passwordHash  String
-  themeMode     String   @default("light")
-  themePrimary  String   @default("#1f4b46")
-  themeAccent   String   @default("#dceae7")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                    String    @id @default(uuid())
+  name                  String
+  email                 String    @unique
+  passwordHash          String
+  themeMode             String    @default("light")
+  themePrimary          String    @default("#1f4b46")
+  themeAccent           String    @default("#dceae7")
+  onboardingStep        Int       @default(0)
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   categories           Category[]
   fixedExpenses        FixedExpense[]
@@ -197,6 +199,8 @@ model CreditCardPurchase {
   description            String
   purchaseDate           DateTime
   totalAmountCents       Int
+  /// Estorno/crédito do cartão: `totalAmountCents` fica negativo e a compra tem parcela única
+  isRefund               Boolean               @default(false)
   isInstallmentPurchase  Boolean               @default(false)
   totalInstallments      Int                   @default(1)
   currentInstallment     Int                   @default(1)

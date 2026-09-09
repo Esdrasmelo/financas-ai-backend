@@ -82,6 +82,8 @@ const purchaseFieldsSchema = z.object({
   totalInstallments: z.number().int().min(1),
   currentInstallment: z.number().int().min(1),
   installmentAmountCents: z.number().int().nonnegative().optional(),
+  /** Estorno: informe o valor positivo; o domínio grava negativo em parcela única. */
+  isRefund: z.boolean().optional(),
 });
 
 const purchaseSchema = purchaseFieldsSchema

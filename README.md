@@ -62,6 +62,45 @@ API REST em **Node.js** + **Express** + **Prisma** (PostgreSQL) para controle de
 
 ---
 
+## Docker
+
+O `docker-compose.yml` tem dois modos, controlados por profile:
+
+**Só o banco** (fluxo de desenvolvimento — a API roda no host com `pnpm dev`):
+
+```bash
+docker compose up -d
+```
+
+**Banco + API containerizada:**
+
+```bash
+docker compose --profile api up -d --build
+```
+
+Nesse modo a imagem é construída a partir do `Dockerfile` (multi-stage, Node 24 slim,
+apenas dependências de produção) e o `docker-entrypoint.sh` roda `prisma migrate deploy`
+antes de subir o servidor. Para pular as migrations, defina `RUN_MIGRATIONS=false`.
+
+As variáveis vêm do `.env` (opcional) e podem ser sobrescritas:
+
+| Variável            | Padrão            | Uso                                  |
+| ------------------- | ----------------- | ------------------------------------ |
+| `POSTGRES_USER`     | `financas`        | Usuário do Postgres                  |
+| `POSTGRES_PASSWORD` | `financas123`     | Senha do Postgres                    |
+| `POSTGRES_DB`       | `prisma_financas` | Nome do banco                        |
+| `POSTGRES_PORT`     | `5433`            | Porta publicada no host              |
+| `API_PORT`          | `3001`            | Porta da API publicada no host       |
+| `RUN_MIGRATIONS`    | `true`            | Aplicar migrations no start          |
+
+O `DATABASE_URL` é sempre sobrescrito pelo compose para apontar a `postgres:5432`
+(hostname interno da rede), independente do que estiver no `.env`.
+
+O compose cria a rede `financas-net`, usada também pelo `docker-compose.yml` do
+`financas-ai-frontend` — suba o backend primeiro.
+
+---
+
 ## Scripts
 
 | Comando          | Descrição                          |
